@@ -8,11 +8,11 @@ Get-ChildItem -Path . -Filter "deepseek-usage-*.vsix" -File -ErrorAction Silentl
     Remove-Item -Force
 
 # Package. vsce automatically runs vscode:prepublish (production build).
-npx -y @vscode/vsce package -o deepseek-status-bar-for-copilot.vsix
+npx.cmd -y @vscode/vsce package -o deepseek-status-bar-for-copilot.vsix
 if ($LASTEXITCODE -ne 0) {
     throw "vsce package failed (exit code $LASTEXITCODE)"
 }
 
 Write-Host "Packaged:"
-Get-ChildItem -Path . -Filter "deepseek-usage-*.vsix" -File |
+Get-Item -LiteralPath .\deepseek-status-bar-for-copilot.vsix |
     Select-Object -ExpandProperty Name
