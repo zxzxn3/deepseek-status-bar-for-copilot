@@ -33,8 +33,9 @@ function pad(s: string, width: number, align: "<" | ">" = "<"): string {
   return align === "<" ? s + " ".repeat(p) : " ".repeat(p) + s;
 }
 
-/** 模型名简写：d4f / d4p / d4fv；未知去掉 deepseek-v4- 前缀并截断到 8 字符。 */
+/** 模型名简写：d41f / d4f / d4p / d4fv；未知去掉 deepseek-v4- 前缀并截断到 8 字符。 */
 const MODEL_SHORT: Record<string, string> = {
+  "deepseek-flash": "d41f",
   "deepseek-v4-flash": "d4f",
   "deepseek-v4-pro": "d4p",
   "deepseek-v4-flash-vision-exp": "d4fv",

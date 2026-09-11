@@ -128,9 +128,10 @@ function rowCosts(r: UsageRecord): { cost: number; chCost: number } {
     r.cache_miss_tokens ?? 0,
     r.model,
     peak,
+    tsMs,
   );
   const chCost =
-    ((r.cache_hit_tokens ?? 0) * modelPrice(r.model).cache_hit) / 1e6 *
+    ((r.cache_hit_tokens ?? 0) * modelPrice(r.model, tsMs).cache_hit) / 1e6 *
     (peak ? 2 : 1);
   return { cost, chCost };
 }

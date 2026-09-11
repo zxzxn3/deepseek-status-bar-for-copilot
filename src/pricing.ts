@@ -1,4 +1,4 @@
-// 官方定价表与费用计算（DeepSeek，20260803T000000）。
+// 官方定价表与费用计算（DeepSeek，按请求时间取价）。
 // - 高峰价 = 空闲价 × 2；高峰 = 北京时间周一~五 9-12、14-18。
 // - 单位：元 / 百万 tokens。
 
@@ -12,41 +12,71 @@ export interface ModelPrice {
   output: number;
 }
 
-export const PRICING: Record<string, ModelPrice> = {
-  "deepseek-v4-flash": { cache_hit: 0.05, cache_miss: 1.5, output: 4.5 },
-  "deepseek-v4-pro": { cache_hit: 0.15, cache_miss: 4.5, output: 13.5 },
-  "deepseek-v4-flash-vision-exp": { cache_hit: 0.05, cache_miss: 1.5, output: 4.5 },
-};
+export const DEFAULT_MODEL = "deepseek-flash";
 
-export const DEFAULT_MODEL = "deepseek-v4-flash";
+interface PriceTier {
+  readonly fromUtcMs: number;
+  readonly set: Readonly<Record<string, Readonly<ModelPrice>>>;
+}
+const F = (cache_hit: number, cache_miss: number, output: number): ModelPrice =>
+  ({ cache_hit, cache_miss, output });
+
+// 空闲价（元 / 百万 tokens），高峰 ×2。
+// 官方来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+export const SCHEDULE: readonly PriceTier[] = [
+  // 初始档沿用仓库 2026-08-03 的价目表，更早历史暂无其它档位。
+  { fromUtcMs: 0, set: {
+    "deepseek-v4-flash": F(0.05, 1.5, 4.5),
+    "deepseek-v4-flash-vision-exp": F(0.05, 1.5, 4.5),
+    "deepseek-v4-pro": F(0.15, 4.5, 13.5),
+  } },
+  // 价格及别名经官网核实；生效时刻来自交接文档中的用户信息，官网未注明。
+  { fromUtcMs: Date.parse("2026-09-10T12:00:00+08:00"), set: {
+    "deepseek-flash": F(0.02, 1, 4),
+    "deepseek-v4-flash": F(0.02, 1, 4),
+    "deepseek-v4-flash-vision-exp": F(0.02, 1, 4),
+  } },
+  // 官网：此时起 Pro 路由到 V4.1 Flash，按 Flash 价计费。
+  { fromUtcMs: Date.parse("2026-09-14T12:00:00+08:00"), set: {
+    "deepseek-v4-pro": F(0.02, 1, 4),
+  } },
+];
+
+// 将来 DeepSeek 再调价时：
+// 1. 打开 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/，核实当前价与生效时刻（北京时间）。
+// 2. 在 SCHEDULE 末尾追加一档：{ fromUtcMs: Date.parse("YYYY-MM-DDTHH:mm:00+08:00"), set: { /* 只写发生变化的模型 */ } }。
+// 3. 同步 README.md / README_zh.md 的 Pricing 段。
+// 4. 在 test.ts 加一条该时间点的边界断言。
+// 5. 若出现新模型 id：同步 src/server/termfmt.ts::MODEL_SHORT 与 README 的模型列表。
+// usage.jsonl 不需要迁移，每条记录按自己的时间点取价。
 
 export type PriceOverrides = Record<string, Partial<ModelPrice>>;
 
-// 生效定价表：默认官方价 + 用户配置覆盖（扩展/代理启动时 setPricingTable 注入）
-let activeTable: Record<string, ModelPrice> = PRICING;
+let overrides: PriceOverrides = {};
 
-/** 默认表合并用户覆盖，得到完整生效表。 */
-export function applyOverrides(
-  overrides?: PriceOverrides,
-): Record<string, ModelPrice> {
-  const t: Record<string, ModelPrice> = { ...PRICING };
-  for (const [m, o] of Object.entries(overrides ?? {})) {
-    t[m] = { ...(t[m] ?? t[DEFAULT_MODEL]), ...o };
+/** 覆盖作用于所有历史及未来档位；无参数时清除覆盖。 */
+export function setPriceOverrides(o?: PriceOverrides): void {
+  overrides = Object.fromEntries(Object.entries(o ?? {}).map(([m, p]) => [m, { ...p }]));
+}
+
+/** 按时间累计官方档位，再合并覆盖；返回独立副本，避免调用方修改内置价格。 */
+export function effectiveTable(tsMs = Date.now()): Record<string, ModelPrice> {
+  const table: Record<string, ModelPrice> = Object.create(null);
+  for (const tier of SCHEDULE) {
+    if (tier.fromUtcMs > tsMs) break;
+    for (const [m, p] of Object.entries(tier.set)) table[m] = { ...p };
   }
-  return t;
+  const fallback = table[DEFAULT_MODEL] ?? table["deepseek-v4-flash"] ?? SCHEDULE[0].set["deepseek-v4-flash"];
+  for (const [m, p] of Object.entries(overrides)) {
+    table[m] = { ...(table[m] ?? fallback), ...p };
+  }
+  return table;
 }
 
-export function setPricingTable(table: Record<string, ModelPrice>): void {
-  activeTable = table;
-}
-
-export function resetPricingTable(): void {
-  activeTable = PRICING;
-}
-
-/** 取某模型生效价（缺失回退默认模型）。 */
-export function modelPrice(model: string): ModelPrice {
-  return activeTable[model] ?? activeTable[DEFAULT_MODEL];
+/** 取某模型生效价；早期记录缺少新模型名时回退旧 Flash。 */
+export function modelPrice(model: string, tsMs = Date.now()): ModelPrice {
+  const table = effectiveTable(tsMs);
+  return table[model] ?? table[DEFAULT_MODEL] ?? table["deepseek-v4-flash"] ?? { ...SCHEDULE[0].set["deepseek-v4-flash"] };
 }
 
 // 北京时间用 dayjs 的 UTC 模式偏移表示（字段即北京值，不受宿主时区影响）
@@ -89,8 +119,9 @@ export function costFromUsage(
   cacheMissTokens: number,
   model = DEFAULT_MODEL,
   peak = false,
+  tsMs = Date.now(),
 ): number {
-  const p = modelPrice(model);
+  const p = modelPrice(model, tsMs);
   const f = peak ? 2.0 : 1.0;
   return (
     (cacheMissTokens * p.cache_miss +

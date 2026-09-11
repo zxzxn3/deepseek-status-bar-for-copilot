@@ -50,8 +50,8 @@ function costsAt(
   const cm = r.cache_miss_tokens ?? 0;
   const peak = isPeakBeijing(new Date(tsMs));
   const f = peak ? 2 : 1;
-  const cost = costFromUsage(pt, ct, ch, cm, r.model, peak);
-  const pr = modelPrice(r.model);
+  const cost = costFromUsage(pt, ct, ch, cm, r.model, peak, tsMs);
+  const pr = modelPrice(r.model, tsMs);
   return {
     pt,
     ct,

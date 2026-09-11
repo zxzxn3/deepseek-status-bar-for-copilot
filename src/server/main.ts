@@ -2,7 +2,7 @@
 // 由扩展 spawn；也可独立运行便于调试。
 import { startProxyServer } from "./proxyServer";
 import { makeHdr, makeSep, setCurrency } from "./termfmt";
-import { applyOverrides, setPricingTable } from "../pricing";
+import { setPriceOverrides } from "../pricing";
 
 function parseArgs(argv: string[]): Record<string, string | undefined> {
   const args: Record<string, string | undefined> = {};
@@ -28,7 +28,7 @@ async function main() {
   }
   if (args.pricing) {
     try {
-      setPricingTable(applyOverrides(JSON.parse(args.pricing)));
+      setPriceOverrides(JSON.parse(args.pricing));
     } catch {
       console.error("invalid --pricing JSON");
     }

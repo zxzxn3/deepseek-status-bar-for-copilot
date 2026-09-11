@@ -19,8 +19,7 @@ import {
 import {
   isPeakBeijing,
   ModelPrice,
-  applyOverrides,
-  setPricingTable,
+  setPriceOverrides,
 } from "./pricing";
 import { Currency, fmtMoney, moneyPair } from "./currency";
 import { fetchCnyPerUsd, getLiveRate } from "./rate";
@@ -149,7 +148,7 @@ function applyPricingConfig() {
     "pricing",
     {},
   );
-  setPricingTable(applyOverrides(overrides));
+  setPriceOverrides(overrides);
 }
 
 // 旧配置命名空间 deepseekUsage.* → deepseekStatusBar.* 迁移（一次，迁移后删除旧键）。

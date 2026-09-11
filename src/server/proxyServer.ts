@@ -1,6 +1,7 @@
 // 本地 OpenAI 兼容代理服务器。
 // 支持：非流式转发 + 真流式透传（chunked / SSE 跨块缓冲 / 客户端断连续读 / 空闲超时）。
 // R5 hook：log 回调即"可选终端"预留点。
+import { DEFAULT_MODEL } from "../pricing";
 import * as http from "http";
 import * as https from "https";
 import { appendBalance, appendRecord, UsageRecord } from "../jsonl";
@@ -200,7 +201,7 @@ async function handle(
     res.end(JSON.stringify({ error: String(e) }));
     return;
   }
-  const model = payload.model ?? "deepseek-v4-flash";
+  const model = payload.model ?? DEFAULT_MODEL;
 
   if (payload.stream) {
     await handleStream(req, res, apiUrl, jsonlPath, balancePath, log, model, payload, balanceUrl);

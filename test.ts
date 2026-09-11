@@ -8,7 +8,9 @@ import {
   currentBeijingSegment,
   costFromUsage,
   modelPrice,
-  applyOverrides,
+  setPriceOverrides,
+  effectiveTable,
+  SCHEDULE,
 } from "./src/pricing";
 import {
   beijingDayStartUtcMs,
@@ -52,15 +54,38 @@ const bjIso = (y: number, m: number, d: number, h: number, min = 0): string =>
   check("seg 04:00 跨夜", currentBeijingSegment(bjIso(2026, 8, 26, 4)).range, "18:00-09:00");
   check("seg Sat", currentBeijingSegment(bjIso(2026, 8, 29, 10)).range, "00:00-24:00");
 
-  // flash：1M 未命中 + 1M 命中 + 1M 输出
-  check("cost flash 非峰", costFromUsage(2e6, 1e6, 1e6, 1e6, "deepseek-v4-flash", false), 6.05);
-  check("cost flash 峰 ×2", costFromUsage(2e6, 1e6, 1e6, 1e6, "deepseek-v4-flash", true), 12.1);
-  // pro：1M 未命中 + 1M 输出
-  check("cost pro 非峰", costFromUsage(1e6, 1e6, 0, 1e6, "deepseek-v4-pro", false), 18);
-  check("modelPrice 未知回退", modelPrice("nope").cache_hit, 0.05);
-  const ov = applyOverrides({ "deepseek-v4-flash": { cache_hit: 9 } });
-  check("applyOverrides 覆盖", ov["deepseek-v4-flash"].cache_hit, 9);
-  check("applyOverrides 其余保留", ov["deepseek-v4-pro"].cache_hit, 0.15);
+  const T = Date.parse("2026-09-12T00:00:00+08:00");
+  const old = Date.parse("2026-09-09T00:00:00+08:00");
+  const flash = Date.parse("2026-09-10T12:00:00+08:00");
+  const pro = Date.parse("2026-09-14T12:00:00+08:00");
+  check("cost flash 非峰", costFromUsage(2e6, 1e6, 1e6, 1e6, "deepseek-v4-flash", false, T), 5.02);
+  check("cost flash 峰 ×2", costFromUsage(2e6, 1e6, 1e6, 1e6, "deepseek-v4-flash", true, T), 10.04);
+  check("cost flash 历史", costFromUsage(2e6, 1e6, 1e6, 1e6, "deepseek-v4-flash", false, old), 6.05);
+  check("cost pro 非峰", costFromUsage(1e6, 1e6, 0, 1e6, "deepseek-v4-pro", false, T), 18);
+  check("未知模型回退", modelPrice("nope", T).cache_hit, 0.02);
+  check("历史新模型回退", modelPrice("deepseek-flash", old).cache_miss, 1.5);
+  check("历史未知回退", modelPrice("nope", old).cache_miss, 1.5);
+  check("Flash 边界前 1ms", modelPrice("deepseek-v4-flash", flash - 1).cache_miss, 1.5);
+  check("Pro 边界前 1ms", modelPrice("deepseek-v4-pro", pro - 1).cache_miss, 4.5);
+  check("Pro 边界当刻", modelPrice("deepseek-v4-pro", pro).cache_miss, 1);
+  for (const m of ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]) {
+    check(`${m} 新档`, JSON.stringify(modelPrice(m, flash)), JSON.stringify({ cache_hit: 0.02, cache_miss: 1, output: 4 }));
+  }
+  check("档位严格升序", SCHEDULE.every((t, i) => i === 0 || t.fromUtcMs > SCHEDULE[i - 1].fromUtcMs), true);
+  check("各档保留旧 Flash", SCHEDULE.every(t => !!effectiveTable(t.fromUtcMs)["deepseek-v4-flash"]), true);
+  setPriceOverrides({ "deepseek-flash": { output: 9 }, "custom": { cache_hit: 0 } });
+  for (const ts of [old, T, pro]) {
+    check("覆盖适用所有时间", modelPrice("deepseek-flash", ts).output, 9);
+    check("自定义模型零价", modelPrice("custom", ts).cache_hit, 0);
+  }
+  check("覆盖未指定字段沿用历史", modelPrice("deepseek-flash", old).cache_miss, 1.5);
+  check("覆盖未指定字段沿用新价", modelPrice("deepseek-flash", T).cache_miss, 1);
+  check("覆盖不影响 Pro", modelPrice("deepseek-v4-pro", T).cache_hit, 0.15);
+  setPriceOverrides();
+  check("清除覆盖", modelPrice("deepseek-flash", T).output, 4);
+  const copy = effectiveTable(T);
+  copy["deepseek-flash"].output = 100;
+  check("返回表隔离", modelPrice("deepseek-flash", T).output, 4);
 }
 
 // ---------- 2. 区间窗口 ----------
@@ -116,6 +141,15 @@ const bjIso = (y: number, m: number, d: number, h: number, min = 0): string =>
   check("models 数", s.models.length, 1);
   check("model count", s.models[0].m.count, 3);
   check("model avgMs", s.models[0].m.avgMs, 1500);
+
+  // 跨调价边界：旧价高峰 + 新价空闲，同时验证缓存费用分项。
+  const boundary = Date.parse("2026-09-10T12:00:00+08:00");
+  const mixed = aggregateRange([
+    rec(new Date(boundary - 1).toISOString(), { cache_hit_tokens: 1e6, prompt_tokens: 2e6 }),
+    rec(new Date(boundary).toISOString(), { cache_hit_tokens: 1e6, prompt_tokens: 2e6 }),
+  ], "today", new Date(boundary));
+  check("跨档聚合费用", mixed.cost.toFixed(4), "4.1200");
+  check("跨档缓存费用", mixed.chCost.toFixed(4), "0.1200");
 
   // 自定义周：rY（8/26 周三）与 r1/r2 同周 → 3 条
   const sw = aggregateCustom([r1, r2, rY], "2026-08-27", "week", );
