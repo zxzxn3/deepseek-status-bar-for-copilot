@@ -324,7 +324,7 @@ function aggregateWindow(
       delete m.countMs;
       return { name, m };
     }),
-    recent: rows.slice(0, 60),
+    recent: rows.slice(0, 200),
     rows,
     buckets,
   };

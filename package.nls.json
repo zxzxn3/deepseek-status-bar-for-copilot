@@ -14,5 +14,6 @@
   "config.pricing": "Per-model price overrides (yuan per million tokens): an object keyed by model, each value {cache_hit, cache_miss, output}. Merged over the built-in defaults.",
   "config.currency": "Cost display currency: cny (￥) or usd ($).",
   "config.cnyPerUsd": "Fallback CNY per 1 USD for USD display, used when the live rate can't be fetched from the API.",
-  "config.lowBalanceWarnCny": "Account balance (yuan) below which the status bar shows a low-balance warning. Set to 0 to disable."
+  "config.lowBalanceWarnCny": "Account balance (yuan) below which the status bar shows a low-balance warning. Set to 0 to disable.",
+  "config.recentRequestsCount": "Number of recent requests shown in the detail panel."
 }

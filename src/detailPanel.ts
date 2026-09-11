@@ -47,7 +47,8 @@ export interface DetailData extends RangeStats {
 // 北京时间用 dayjs 的 UTC 模式偏移表示（字段即北京值，不受宿主时区影响）
 const bj = (ts: Date | string | number): dayjs.Dayjs =>
   dayjs.utc(ts).add(8, "hour");
-const RECENT_DISPLAY = 30;
+const RECENT_DEFAULT = 30;
+const RECENT_MAX = 200;
 
 export interface CustomSelection {
   date: string; // YYYY-MM-DD（北京时间）
@@ -254,7 +255,13 @@ function render(
           )
           .join("");
 
-  const recent = s.recent.slice(0, RECENT_DISPLAY);
+  const recentCount = Math.min(
+    RECENT_MAX,
+    Math.max(1, vscode.workspace
+      .getConfiguration("deepseekStatusBar")
+      .get<number>("recentRequestsCount", RECENT_DEFAULT)),
+  );
+  const recent = s.recent.slice(0, recentCount);
   const recentRows =
     recent.length === 0
       ? `<tr><td colspan="8" class="muted">${t("noRequestsToday")}</td></tr>`

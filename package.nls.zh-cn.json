@@ -14,5 +14,6 @@
   "config.pricing": "按模型的定价覆盖（元/百万 token）：以模型名为键的对象，值 {cache_hit, cache_miss, output}，合并到默认价上。",
   "config.currency": "费用显示货币：cny（￥）或 usd（$）。",
   "config.cnyPerUsd": "1 美元兑人民币汇率的兜底值（自动从公开 API 拉取失败时用）。",
-  "config.lowBalanceWarnCny": "账户余额（元）低于该值时状态栏显示低余额警告；设为 0 关闭。"
+  "config.lowBalanceWarnCny": "账户余额（元）低于该值时状态栏显示低余额警告；设为 0 关闭。",
+  "config.recentRequestsCount": "明细面板\"最近请求\"显示的条数。"
 }

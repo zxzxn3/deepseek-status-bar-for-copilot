@@ -152,6 +152,7 @@ Copilot Chat (DeepSeek V4 for Copilot)
 | `deepseekStatusBar.currency` | `cny` | 费用货币：`cny`（￥）或 `usd`（$） |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | CNY 兑 USD 的兜底汇率（实时汇率拉取失败时用） |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | 余额（元）低于该值时状态栏告警；`0` 关闭 |
+| `deepseekStatusBar.recentRequestsCount` | `30` | 明细面板"最近请求"显示的条数（1–200） |
 
 **计价模型** —— 内置默认价 + 你的覆盖；北京工作日 09:00–12:00、14:00–18:00 高峰 = 低谷 ×2。USD 显示使用实时汇率（公开 API，每 6 小时刷新），离线回退到 `cnyPerUsd`。
 

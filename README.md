@@ -55,8 +55,6 @@ The status bar shows today's totals (Beijing time) and updates automatically:
 
 ### Detail panel
 
-Click through to a full webview dashboard:
-
 <p align="center">
   <img src="details-view.png" alt="Detail panel with summary, usage chart, per-model breakdown and recent requests" width="760"/>
 </p>
@@ -148,6 +146,7 @@ Data is stored as one JSON line per request in VS Code's global storage: raw fac
 | `deepseekStatusBar.currency` | `cny` | Cost currency: `cny` (￥) or `usd` ($) |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | Fallback CNY-per-USD rate, used when the live rate can't be fetched |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | Account balance (yuan) below which the status bar warns; `0` disables |
+| `deepseekStatusBar.recentRequestsCount` | `30` | Number of recent requests shown in the detail panel (1–200) |
 
 **Pricing model** — built-in defaults + your overrides; peak = off-peak × 2 during Beijing weekdays 09:00–12:00 and 14:00–18:00. USD display uses a live rate (fetched from a public API, refreshed every 6 hours) and falls back to `cnyPerUsd` offline.
 
