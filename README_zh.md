@@ -68,7 +68,7 @@
 - **区间选择** —— `日` / `周`（自然周）/ `月`（自然月）/ `全部`，配合**日期选择器**查看任意指定天 / 周 / 月
 - **用量走势图** —— Chart.js 堆叠柱（缓存命中 / 缓存未命中 / 输出），费用或词元；今天与周按**小时**分桶，月与全部按**天**分桶
 - **余额 / 耗时曲线** —— 可开关叠加显示账户余额与平均请求耗时，各自独立坐标轴并带图例
-- **按模型拆分** —— 各模型（Flash / Pro / Vision）的费用与词元，外加每模型平均耗时
+- **按模型拆分** —— 各模型（V4.1 Flash / V4 Pro）的费用与词元，外加每模型平均耗时
 - **最近请求** —— 时间、模型、输入/输出、总/缓存、费用、耗时、状态、错误
 - **导出 CSV** —— 将所选区间导出为带费用列的 CSV
 
@@ -148,13 +148,15 @@ Copilot Chat (DeepSeek V4 for Copilot)
 | `deepseekStatusBar.manageBaseUrl` | `true` | 运行期间把 `deepseek-copilot.baseUrl` 指向代理，停止时恢复 |
 | `deepseekStatusBar.pollIntervalSeconds` | `10` | 状态栏刷新间隔（秒，最小 2） |
 | `deepseekStatusBar.statusBarFormat` | `full` | 状态栏格式：`full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
-| `deepseekStatusBar.pricing` | `{}` | 按模型定价覆盖（元/百万词元）：`{"deepseek-v4-flash": {"cache_hit": 0.05, "cache_miss": 1.5, "output": 4.5}}` |
+| `deepseekStatusBar.pricing` | `{}` | 按模型定价覆盖（元/百万词元）：`{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
 | `deepseekStatusBar.currency` | `cny` | 费用货币：`cny`（￥）或 `usd`（$） |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | CNY 兑 USD 的兜底汇率（实时汇率拉取失败时用） |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | 余额（元）低于该值时状态栏告警；`0` 关闭 |
 | `deepseekStatusBar.recentRequestsCount` | `30` | 明细面板"最近请求"显示的条数（1–200） |
 
 **计价模型** —— 内置默认价 + 你的覆盖；北京工作日 09:00–12:00、14:00–18:00 高峰 = 低谷 ×2。USD 显示使用实时汇率（公开 API，每 6 小时刷新），离线回退到 `cnyPerUsd`。
+
+**分时价目表** —— 自北京时间 2026-09-10 12:00 起，V4.1 Flash 空闲价为每百万词元 0.02 / 1 / 4 元（缓存命中 / 未命中 / 输出），高峰翻倍。旧 ID `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 同价。V4 Pro 空闲价保持 0.15 / 4.5 / 13.5 元，至北京时间 2026-09-14 12:00 起，`deepseek-v4-pro` 改按 Flash 价计费。历史记录按自身时间戳取价，自定义覆盖对所有日期优先生效。价格与 Pro 切换时间依据[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，Flash 生效时间依据项目交接信息；更早记录沿用仓库初始价。
 
 ## 命令
 

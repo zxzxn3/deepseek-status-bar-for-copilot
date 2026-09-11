@@ -62,7 +62,7 @@ The status bar shows today's totals (Beijing time) and updates automatically:
 - **Range selector** — `Day` / `Week` / `Month` / `All`, with a **date picker** to view any specific day, week, or month
 - **Usage-over-time chart** — Chart.js stacked bars (cache hit / cache miss / output) for cost or tokens, bucketed **by hour** for today & week and **by day** for month & all
 - **Balance & latency curves** — toggleable overlays for the account balance and the average request latency over time, each on its own axis with a legend
-- **Per-model breakdown** — cost & tokens per model (Flash / Pro / Vision), plus average latency per model
+- **Per-model breakdown** — cost & tokens per model (V4.1 Flash / V4 Pro), plus average latency per model
 - **Recent requests** — timestamp, model, prompt/completion, total/cache, cost, latency, status, error
 - **Export CSV** — dump the selected range to a CSV with cost columns
 
@@ -142,13 +142,15 @@ Data is stored as one JSON line per request in VS Code's global storage: raw fac
 | `deepseekStatusBar.manageBaseUrl` | `true` | Point `deepseek-copilot.baseUrl` at the proxy while running, and restore it when stopped |
 | `deepseekStatusBar.pollIntervalSeconds` | `10` | Status bar refresh interval (seconds, min 2) |
 | `deepseekStatusBar.statusBarFormat` | `full` | Status bar format: `full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
-| `deepseekStatusBar.pricing` | `{}` | Per-model price overrides (yuan / 1M tokens): `{"deepseek-v4-flash": {"cache_hit": 0.05, "cache_miss": 1.5, "output": 4.5}}` |
+| `deepseekStatusBar.pricing` | `{}` | Per-model price overrides (yuan / 1M tokens): `{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
 | `deepseekStatusBar.currency` | `cny` | Cost currency: `cny` (￥) or `usd` ($) |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | Fallback CNY-per-USD rate, used when the live rate can't be fetched |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | Account balance (yuan) below which the status bar warns; `0` disables |
 | `deepseekStatusBar.recentRequestsCount` | `30` | Number of recent requests shown in the detail panel (1–200) |
 
 **Pricing model** — built-in defaults + your overrides; peak = off-peak × 2 during Beijing weekdays 09:00–12:00 and 14:00–18:00. USD display uses a live rate (fetched from a public API, refreshed every 6 hours) and falls back to `cnyPerUsd` offline.
+
+**Pricing schedule** — From September 10, 2026 at 12:00 Beijing time, V4.1 Flash costs CNY 0.02 / 1 / 4 per million tokens (cache hit / cache miss / output) off-peak; peak prices are double. The legacy IDs `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` use the same rates. V4 Pro remains at 0.15 / 4.5 / 13.5 off-peak until September 14, 2026 at 12:00 Beijing time, when `deepseek-v4-pro` switches to Flash pricing. Historical records use the price effective at their timestamp; custom overrides take priority across all dates. Prices and the Pro transition follow the [official pricing page](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/); the Flash effective time comes from the project handover. Earlier records retain the repository's initial rates.
 
 ## Commands
 
