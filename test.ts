@@ -144,9 +144,10 @@ const utcIso = (y: number, m: number, d: number, h: number, min = 0): string =>
     JSON.stringify(props["deepseekStatusBar.additionalWorkdays"].default),
     JSON.stringify(DEFAULT_ADDITIONAL_WORKDAYS),
   );
-  // 2026 年国办通知：放假 33 天、调休上班 6 天
-  check("节假日天数", DEFAULT_HOLIDAYS.length, 33);
-  check("调休上班天数", DEFAULT_ADDITIONAL_WORKDAYS.length, 6);
+  // 内置表只收峰谷定价生效（2026-08-17）之后的日期：中秋 3 天 + 国庆 7 天、调休 2 天
+  check("节假日天数", DEFAULT_HOLIDAYS.length, 10);
+  check("调休上班天数", DEFAULT_ADDITIONAL_WORKDAYS.length, 2);
+  check("内置表不早于峰谷生效", DEFAULT_HOLIDAYS.concat(DEFAULT_ADDITIONAL_WORKDAYS).every(d => Date.parse(d + "T00:00:00+08:00") >= Date.parse("2026-08-17T00:00:00+08:00")), true);
   check("日期格式", DEFAULT_HOLIDAYS.concat(DEFAULT_ADDITIONAL_WORKDAYS).every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)), true);
 }
 

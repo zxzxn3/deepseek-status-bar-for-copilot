@@ -149,8 +149,8 @@ Copilot Chat (DeepSeek V4 for Copilot)
 | `deepseekStatusBar.pollIntervalSeconds` | `10` | 状态栏刷新间隔（秒，最小 2） |
 | `deepseekStatusBar.statusBarFormat` | `full` | 状态栏格式：`full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
 | `deepseekStatusBar.pricing` | `{}` | 按模型定价覆盖（元/百万词元）：`{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
-| `deepseekStatusBar.holidays` | 2026 年法定节假日 | 中国法定节假日（北京日历日 `YYYY-MM-DD`），这些日期整天不计高峰价。整表替换内置列表 |
-| `deepseekStatusBar.additionalWorkdays` | 2026 年调休上班日 | 调休上班日（北京日历日），官方要求上班的周末仍按工作日计高峰。设为 `[]` 则周末永远空闲 |
+| `deepseekStatusBar.holidays` | `2026-09-25~27`、`2026-10-01~07` | 中国法定节假日（北京日历日 `YYYY-MM-DD`），这些日期整天不计高峰价。整表替换内置列表 |
+| `deepseekStatusBar.additionalWorkdays` | `2026-09-20`、`2026-10-10` | 调休上班日（北京日历日），官方要求上班的周末仍按工作日计高峰。设为 `[]` 则周末永远空闲 |
 | `deepseekStatusBar.currency` | `cny` | 费用货币：`cny`（￥）或 `usd`（$） |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | CNY 兑 USD 的兜底汇率（实时汇率拉取失败时用） |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | 余额（元）低于该值时状态栏告警；`0` 关闭 |
@@ -158,7 +158,7 @@ Copilot Chat (DeepSeek V4 for Copilot)
 
 **计价模型** —— 内置默认价 + 你的覆盖；UTC 工作日 01:00–04:00、06:00–10:00 高峰 = 空闲 ×2（官方价目表的 UTC 口径，等同北京时间 09:00–12:00、14:00–18:00）。峰谷定价自北京时间 2026-08-17 00:00 起生效，此前为单一价，历史记录不会被回溯翻倍。USD 显示使用实时汇率（公开 API，每 6 小时刷新），离线回退到 `cnyPerUsd`。
 
-**法定节假日** —— 官方价目表脚注规定工作日高峰时段**不含中国法定节假日**，因此内置 2026 年国务院办公厅放假安排（国办发明电〔2025〕7 号）：放假日期按北京日历日整天计入空闲，调休上班日（周末上班）仍按工作日计高峰。两个列表都可在设置里整表替换——想按标准周末计费就把 `additionalWorkdays` 设为 `[]`，次年的放假安排公布后把两个列表换成新日期即可。同一日期同时出现在两个列表时按放假处理。对已记录的历史数据，改这两个列表会立刻重新计价（原始 `usage.jsonl` 不动）。
+**法定节假日** —— 官方价目表脚注规定工作日高峰时段**不含中国法定节假日**，因此内置 2026 年国务院办公厅放假安排（国办发明电〔2025〕7 号）中峰谷定价生效后的日期：放假 `2026-09-25~27`（中秋）、`2026-10-01~07`（国庆）按北京日历日整天计入空闲，调休上班日 `2026-09-20`、`2026-10-10`（周末上班）仍按工作日计高峰。更早的放假日（元旦、春节、清明、劳动节、端午）不会出现在表里，因为峰谷定价 2026-08-17 才生效，它们不可能被翻倍。两个列表都可在设置里整表替换——想按标准周末计费就把 `additionalWorkdays` 设为 `[]`，新一年的放假安排公布后把两个列表换成新日期即可。同一日期同时出现在两个列表时按放假处理。对已记录的历史数据，改这两个列表会立刻重新计价（原始 `usage.jsonl` 不动）。
 
 **分时价目表** —— 自北京时间 2026-09-10 12:00 起，V4.1 Flash 空闲价为每百万词元 0.02 / 1 / 4 元（缓存命中 / 未命中 / 输出），高峰翻倍。旧 ID `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 路由到 V4.1-Flash，按 Flash 价计费。`deepseek-v4-pro` 始终按自身价目计费（空闲 0.15 / 4.5 / 13.5 元，高峰翻倍）：官方 2026-09-10 更新日志明确 9 月 14 日之后继续提供 V4 Pro 且计费方式不变，官方价目表也仍单列该模型。历史记录按自身时间戳取价，自定义覆盖对所有日期优先生效。价格与生效时刻均以[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)和[官方更新日志](https://api-docs.deepseek.com/zh-cn/updates)为准；更早记录沿用仓库初始价。
 
