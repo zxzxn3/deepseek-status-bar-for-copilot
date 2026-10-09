@@ -105,8 +105,9 @@ export const DEFAULT_HOLIDAYS: readonly string[] = [
 ];
 
 // 同一通知里的调休上班日（周末上班），按工作日计高峰。
+// 只留历史日期：官方口径是「周一至周五」计高峰，未来再往调休上班日加价没有依据。
 export const DEFAULT_ADDITIONAL_WORKDAYS: readonly string[] = [
-  "2026-09-20", "2026-10-10", // 国庆节调休
+  "2026-09-20", // 国庆节调休
 ];
 
 // 生效日历：默认取上面的内置表；扩展/代理启动时用 deepseekStatusBar.holidays

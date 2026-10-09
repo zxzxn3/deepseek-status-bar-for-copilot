@@ -13,7 +13,7 @@
   "config.pollIntervalSeconds": "Status bar refresh interval (seconds).",
   "config.pricing": "Per-model price overrides (yuan per million tokens): an object keyed by model, each value {cache_hit, cache_miss, output}. Merged over the built-in defaults, taking priority for all historical and future dates.",
   "config.holidays": "Chinese statutory holidays (Beijing calendar days, YYYY-MM-DD): these days are off-peak all day. Defaults to 2026-09-25~27 (Mid-Autumn) and 2026-10-01~07 (National Day). The list replaces the built-in one, so remove entries you want to bill at peak.",
-  "config.additionalWorkdays": "Make-up workdays (Beijing calendar days, YYYY-MM-DD): weekends that are official working days in China, billed at peak hours. Defaults to 2026-09-20 and 2026-10-10. Set to [] to follow DeepSeek's literal wording (peak = Monday-Friday only) and keep every weekend off-peak.",
+  "config.additionalWorkdays": "Make-up workdays (Beijing calendar days, YYYY-MM-DD): weekends that are official working days in China, billed at peak hours. Defaults to 2026-09-20 (a past make-up day kept as a live example). Future make-up days are not billed at peak, matching DeepSeek's literal wording (peak = Monday-Friday only) and keep every weekend off-peak.",
   "config.currency": "Cost display currency: cny (￥) or usd ($).",
   "config.cnyPerUsd": "Fallback CNY per 1 USD for USD display, used when the live rate can't be fetched from the API.",
   "config.lowBalanceWarnCny": "Account balance (yuan) below which the status bar shows a low-balance warning. Set to 0 to disable.",
