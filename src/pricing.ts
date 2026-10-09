@@ -34,14 +34,16 @@ export const SCHEDULE: readonly PriceTier[] = [
     "deepseek-v4-pro": F(0.15, 4.5, 13.5),
   } },
   // V4.1-Flash 上线价：Flash 空闲 0.02/1/4；旧模型名路由到 V4.1-Flash 并按 Flash 价计费。
-  // 官方更新日志 2026-09-10 只给出日期，具体时刻沿用 12:00（北京）。
+  // 生效时刻按官方 2026-09-09「DeepSeek V4.1 Flash 定价通知」与 09-10「推迟下线」通知：
+  // 北京时间 2026-09-10 12:00（更新日志同日的条目只写日期）。
   { fromUtcMs: Date.parse("2026-09-10T12:00:00+08:00"), set: {
     "deepseek-flash": F(0.02, 1, 4),
     "deepseek-v4-flash": F(0.02, 1, 4),
     "deepseek-v4-flash-vision-exp": F(0.02, 1, 4),
   } },
-  // deepseek-v4-pro 不进此表：官方价目表仍单列该模型（空闲 0.15/4.5/13.5），
-  // 2026-09-10 更新日志亦明确「9 月 14 日之后继续提供 V4 Pro，计费方式保持不变」。
+  // deepseek-v4-pro 不进此表：官方价目表仍单列该模型（空闲 0.15/4.5/13.5），更新日志
+  // 2026-09-10 条目与 09-11「继续提供 DeepSeek V4 Pro API 调用服务通知」均明确
+  // 「9 月 14 日之后继续提供 V4 Pro，计费方式保持不变」。
 ];
 
 // 将来 DeepSeek 再调价时：
@@ -141,7 +143,10 @@ function beijingDayStr(t: dayjs.Dayjs): string {
   return t.add(8, "hour").format("YYYY-MM-DD");
 }
 
-/** 该时刻所在的北京日历日是否按工作日计高峰：法定节假日与周末不算，调休上班日算。 */
+/**
+ * 该时刻所在的北京日历日是否按工作日计高峰：法定节假日与（2026-08-23 起的）周末不算，
+ * 调休上班日算。周末全天空闲这一条晚于峰谷定价生效，8/17-8/22 的周末仍按工作日分段。
+ */
 export function isWorkday(
   tsUtc: dayjs.Dayjs | Date | string | number = Date.now(),
 ): boolean {
@@ -150,11 +155,19 @@ export function isWorkday(
   if (holidaySet.has(day)) return false;
   if (extraWorkdaySet.has(day)) return true;
   const wd = t.add(8, "hour").day(); // 北京日历日的星期（Sun=0..Sat=6）
-  return wd !== 0 && wd !== 6;
+  if (wd !== 0 && wd !== 6) return true;
+  return t.valueOf() < WEEKEND_OFFPEAK_SINCE_MS;
 }
 
 /** 峰谷定价自北京时间 2026-08-17 00:00 起生效（官方更新日志 2026-08-13），此前为单一价。 */
 export const PEAK_PRICING_SINCE_MS = Date.parse("2026-08-17T00:00:00+08:00");
+
+/**
+ * 周末（周六、周日）全天不计高峰，自北京时间 2026-08-23 00:00 起（官方 2026-08-22 通知：
+ * 「工作日（周一至周五）继续执行原有峰谷分段计费，周末全天统一按低谷价」）。
+ * 在此之前（8/17 00:00 起）周末与工作日一样分高峰/空闲段。
+ */
+export const WEEKEND_OFFPEAK_SINCE_MS = Date.parse("2026-08-23T00:00:00+08:00");
 
 /** 某 UTC 时刻是否落在高峰时段（工作日 01:00-04:00、06:00-10:00）。 */
 function inPeakWindow(t: dayjs.Dayjs): boolean {

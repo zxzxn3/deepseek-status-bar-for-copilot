@@ -57,6 +57,13 @@ const utcIso = (y: number, m: number, d: number, h: number, min = 0): string =>
   // 峰谷定价 2026-08-17 00:00（北京）生效：周五 02:00Z 仍是单一价，周一同时刻起翻倍
   check("峰谷生效前非峰", isPeak(utcIso(2026, 8, 14, 2)), false);
   check("峰谷生效当刻", isPeak(utcIso(2026, 8, 17, 2)), true);
+  // 周末全天低谷自 2026-08-23 00:00（北京）起：8/17-8/22 的周末仍分段计费
+  check("周末分段期 周六 02:00Z", isPeak(utcIso(2026, 8, 22, 2)), true);
+  check("周末分段期 周六 05:00Z", isPeak(utcIso(2026, 8, 22, 5)), false);
+  check("周末分段期 周六末刻", isWorkday(utcIso(2026, 8, 22, 15, 59)), true);
+  check("周末规则生效当刻", isWorkday(utcIso(2026, 8, 22, 16)), false);
+  check("周末规则生效后 周日 02:00Z", isPeak(utcIso(2026, 8, 23, 2)), false);
+  check("周末规则生效后 周一 02:00Z", isPeak(utcIso(2026, 8, 24, 2)), true);
 
   check("seg 02:00Z", currentSegment(utcIso(2026, 8, 25, 2)).range, "01:00-04:00");
   check("seg 05:00Z", currentSegment(utcIso(2026, 8, 25, 5)).range, "04:00-06:00");
