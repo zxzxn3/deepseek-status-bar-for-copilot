@@ -18,8 +18,7 @@ This extension puts a lightweight local proxy between Copilot Chat (via the [Dee
 </p>
 
 <p align="center">
-  <em>Twinkle, twinkle, little star,<br/>How I wonder where my stars are.</em><br/>
-  <sub>If these numbers ever saved you a surprise on your bill, a ⭐ helps the next person find it.</sub>
+  <em>Twinkle, twinkle, little star,<br/>How I wonder where my stars are.</em>
 </p>
 
 ## Why this extension?
