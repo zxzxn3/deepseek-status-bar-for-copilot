@@ -4,7 +4,6 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
-  DEFAULT_ADDITIONAL_WORKDAYS,
   DEFAULT_HOLIDAYS,
   isPeak,
   isWorkday,
@@ -81,17 +80,16 @@ const utcIso = (y: number, m: number, d: number, h: number, min = 0): string =>
   check("节假日后一天周四", isPeak(utcIso(2026, 10, 8, 2)), true);
   check("节假日段", currentSegment(utcIso(2026, 10, 1, 2)).range, "00:00-24:00");
   check("节假日不加班", isWorkday(utcIso(2026, 10, 1, 2)), false);
-  // 调休上班日：2026-09-20(周日) 按工作日计高峰；10-10(周六) 不加价，按官方「周一至周五」字面口径
-  check("调休周日计峰", isPeak(utcIso(2026, 9, 20, 2)), true);
-  check("调休周六不加价", isPeak(utcIso(2026, 10, 10, 2)), false);
-  check("调休周日上班", isWorkday(utcIso(2026, 9, 20, 2)), true);
+  // 调休上班日按周末处理：2026-09-20(周日)、10-10(周六) 整天低谷（官方账单实测口径）
+  check("调休周日不计峰", isPeak(utcIso(2026, 9, 20, 2)), false);
+  check("调休周六不计峰", isPeak(utcIso(2026, 10, 10, 2)), false);
+  check("调休周日不算工作日", isWorkday(utcIso(2026, 9, 20, 2)), false);
   check("普通周六不上班", isWorkday(utcIso(2026, 8, 29, 2)), false);
-  check("调休日段", currentSegment(utcIso(2026, 9, 20, 2)).range, "01:00-04:00");
-  // 注入覆盖：整表替换，同一天既放假又上班时按放假
-  setPeakCalendar(["2026-08-25"], ["2026-08-25", "2026-08-29"]);
+  check("调休日段", currentSegment(utcIso(2026, 9, 20, 2)).range, "00:00-24:00");
+  // 注入覆盖：整表替换
+  setPeakCalendar(["2026-08-25"]);
   check("自定义放假日", isPeak(utcIso(2026, 8, 25, 2)), false);
-  check("放假优先于上班", isWorkday(utcIso(2026, 8, 25, 2)), false);
-  check("自定义上班日", isPeak(utcIso(2026, 8, 29, 2)), true);
+  check("自定义放假日不算工作日", isWorkday(utcIso(2026, 8, 25, 2)), false);
   check("未列出的工作日", isPeak(utcIso(2026, 8, 26, 2)), true);
   setPeakCalendar([]);
   check("清空后周末整天空闲", isPeak(utcIso(2026, 8, 29, 2)), false);
@@ -146,16 +144,10 @@ const utcIso = (y: number, m: number, d: number, h: number, min = 0): string =>
     JSON.stringify(props["deepseekStatusBar.holidays"].default),
     JSON.stringify(DEFAULT_HOLIDAYS),
   );
-  check(
-    "package.json additionalWorkdays 默认值 = 内置表",
-    JSON.stringify(props["deepseekStatusBar.additionalWorkdays"].default),
-    JSON.stringify(DEFAULT_ADDITIONAL_WORKDAYS),
-  );
-  // 内置表只收峰谷定价生效（2026-08-17）之后的日期：中秋 3 天 + 国庆 7 天、调休 2 天
+  // 内置表只收峰谷定价生效（2026-08-17）之后的日期：中秋 3 天 + 国庆 7 天
   check("节假日天数", DEFAULT_HOLIDAYS.length, 10);
-  check("调休上班天数", DEFAULT_ADDITIONAL_WORKDAYS.length, 1);
-  check("内置表不早于峰谷生效", DEFAULT_HOLIDAYS.concat(DEFAULT_ADDITIONAL_WORKDAYS).every(d => Date.parse(d + "T00:00:00+08:00") >= Date.parse("2026-08-17T00:00:00+08:00")), true);
-  check("日期格式", DEFAULT_HOLIDAYS.concat(DEFAULT_ADDITIONAL_WORKDAYS).every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)), true);
+  check("内置表不早于峰谷生效", DEFAULT_HOLIDAYS.every(d => Date.parse(d + "T00:00:00+08:00") >= Date.parse("2026-08-17T00:00:00+08:00")), true);
+  check("日期格式", DEFAULT_HOLIDAYS.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)), true);
 }
 
 // ---------- 2. 区间窗口 ----------

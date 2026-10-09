@@ -2,7 +2,8 @@
 // - 高峰价 = 空闲价 × 2；高峰 = UTC 周一~五 01:00-04:00、06:00-10:00
 //   （官方英文价目表的 UTC 口径，等同北京时间 09:00-12:00、14:00-18:00）。
 // - 高峰时段不含中国法定节假日（官方价目表脚注），放假按北京日历日整天算；
-//   调休上班日（周末但官方要求上班）仍按工作日计高峰。
+//   周末全天低谷，调休上班日（官方要求上班的周六/周日）同样按低谷计
+//   （官方账单实测：2026-09-20 补班日整天只有低谷价）。
 // - 单位：元 / 百万 tokens。
 
 import dayjs from "dayjs";
@@ -52,8 +53,8 @@ export const SCHEDULE: readonly PriceTier[] = [
 // 3. 同步 README.md / README_zh.md 的 Pricing 段。
 // 4. 在 test.ts 加一条该时间点的边界断言。
 // 5. 若出现新模型 id：同步 src/server/termfmt.ts::MODEL_SHORT 与 README 的模型列表。
-// 6. 每年国务院办公厅公布次年放假安排后，更新 DEFAULT_HOLIDAYS / DEFAULT_ADDITIONAL_WORKDAYS，
-//    以及 package.json 里两个同名设置的默认值（test.ts 会断言两者一致）。
+// 6. 每年国务院办公厅公布次年放假安排后，更新 DEFAULT_HOLIDAYS
+//    以及 package.json 里 deepseekStatusBar.holidays 的默认值（test.ts 会断言两者一致）。
 // usage.jsonl 不需要迁移，每条记录按自己的时间点取价。
 
 export type PriceOverrides = Record<string, Partial<ModelPrice>>;
@@ -104,16 +105,9 @@ export const DEFAULT_HOLIDAYS: readonly string[] = [
   "2026-10-06", "2026-10-07", // 国庆节
 ];
 
-// 同一通知里的调休上班日（周末上班），按工作日计高峰。
-// 只留历史日期：官方口径是「周一至周五」计高峰，未来再往调休上班日加价没有依据。
-export const DEFAULT_ADDITIONAL_WORKDAYS: readonly string[] = [
-  "2026-09-20", // 国庆节调休
-];
-
-// 生效日历：默认取上面的内置表；扩展/代理启动时用 deepseekStatusBar.holidays
-// 与 deepseekStatusBar.additionalWorkdays 注入（配置默认值与内置表一致）。
+// 生效日历：默认取上面的内置表；扩展/代理启动时用 deepseekStatusBar.holidays 注入
+// （配置默认值与内置表一致）。调休上班日不在其中：官方按周末计低谷。
 let holidaySet = new Set(DEFAULT_HOLIDAYS);
-let extraWorkdaySet = new Set(DEFAULT_ADDITIONAL_WORKDAYS);
 
 const toDaySet = (list?: readonly string[]): Set<string> =>
   new Set(
@@ -124,19 +118,11 @@ const toDaySet = (list?: readonly string[]): Set<string> =>
   );
 
 /**
- * 注入法定节假日与调休上班日（北京日历日 "YYYY-MM-DD"），整表替换。
- * 同一天同时出现在两个列表时按放假处理（不翻倍，稳妥优先）。传 undefined 恢复内置表。
+ * 注入法定节假日（北京日历日 "YYYY-MM-DD"），整表替换。传 undefined 恢复内置表。
  */
-export function setPeakCalendar(
-  holidays?: readonly string[],
-  additionalWorkdays?: readonly string[],
-): void {
+export function setPeakCalendar(holidays?: readonly string[]): void {
   holidaySet =
     holidays === undefined ? new Set(DEFAULT_HOLIDAYS) : toDaySet(holidays);
-  extraWorkdaySet =
-    additionalWorkdays === undefined
-      ? new Set(DEFAULT_ADDITIONAL_WORKDAYS)
-      : toDaySet(additionalWorkdays);
 }
 
 /** 某 UTC 时刻落在哪个北京日历日（节假日按北京日期整天判定）。 */
@@ -145,8 +131,8 @@ function beijingDayStr(t: dayjs.Dayjs): string {
 }
 
 /**
- * 该时刻所在的北京日历日是否按工作日计高峰：法定节假日与（2026-08-23 起的）周末不算，
- * 调休上班日算。周末全天空闲这一条晚于峰谷定价生效，8/17-8/22 的周末仍按工作日分段。
+ * 该时刻所在的北京日历日是否按工作日计高峰：法定节假日不算，（2026-08-23 起的）周末与
+ * 调休上班日也不算。周末全天空闲这一条晚于峰谷定价生效，8/17-8/22 的周末仍按工作日分段。
  */
 export function isWorkday(
   tsUtc: dayjs.Dayjs | Date | string | number = Date.now(),
@@ -154,7 +140,6 @@ export function isWorkday(
   const t = dayjs.utc(tsUtc);
   const day = beijingDayStr(t);
   if (holidaySet.has(day)) return false;
-  if (extraWorkdaySet.has(day)) return true;
   const wd = t.add(8, "hour").day(); // 北京日历日的星期（Sun=0..Sat=6）
   if (wd !== 0 && wd !== 6) return true;
   return t.valueOf() < WEEKEND_OFFPEAK_SINCE_MS;

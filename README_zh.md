@@ -154,7 +154,6 @@ Copilot Chat (DeepSeek V4 for Copilot)
 | `deepseekStatusBar.statusBarFormat` | `full` | 状态栏格式：`full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
 | `deepseekStatusBar.pricing` | `{}` | 按模型定价覆盖（元/百万词元）：`{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
 | `deepseekStatusBar.holidays` | `2026-09-25~27`、`2026-10-01~07` | 中国法定节假日（北京日历日 `YYYY-MM-DD`），这些日期整天不计高峰价。整表替换内置列表 |
-| `deepseekStatusBar.additionalWorkdays` | `2026-09-20` | 调休上班日（北京日历日），官方要求上班的周末仍按工作日计高峰。设为 `[]` 则周末永远空闲 |
 | `deepseekStatusBar.currency` | `cny` | 费用货币：`cny`（￥）或 `usd`（$） |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | CNY 兑 USD 的兜底汇率（实时汇率拉取失败时用） |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | 余额（元）低于该值时状态栏告警；`0` 关闭 |
@@ -164,7 +163,7 @@ Copilot Chat (DeepSeek V4 for Copilot)
 
 **法定节假日** —— 官方价目表脚注规定工作日高峰时段**不含中国法定节假日**，因此内置 2026 年国务院办公厅放假安排（国办发明电〔2025〕7 号）中分时计费生效后的日期：放假 `2026-09-25~27`（中秋）、`2026-10-01~07`（国庆）按北京日历日整天计入空闲。更早的放假日（元旦、春节、清明、劳动节、端午）不会出现在表里，因为分时计费 2026-08-17 才生效，它们不可能被翻倍。
 
-**调休上班日。** DeepSeek 自己的表述（价目表脚注 + 2026-08-22 通知）把高峰时段定义为**周一至周五**（不含中国法定节假日），周末全天低谷；而调休上班日是「要上班的周六或周日」——在国内算工作日，按 DeepSeek 的字面口径却落在周末一侧，所以这里按空闲计费。`additionalWorkdays` 默认只留历史的 `2026-09-20` 作为格式示例；如果你的账单显示某个调休上班日真的被按高峰计费，把那天自己加进去即可。两个列表都是 `YYYY-MM-DD` 数组、整表替换，新一年的放假安排公布后换成新日期；同一日期同时出现在两个列表时按放假处理。对已记录的历史数据，改这两个列表会立刻重新计价（原始 `usage.jsonl` 不动）。
+**调休上班日** —— DeepSeek 的口径（价目表脚注 + 2026-08-22 通知）把高峰时段限定为**周一至周五**（不含中国法定节假日），周末全天低谷，本扩展照此执行：所有周六、周日都按低谷计，包括国内的调休上班日。官方用量导出可证——2026-09-20（周日补班日）当天每一行都是低谷价。因此 `holidays` 是唯一可配置的日历，没有调休上班日列表：把补班日按高峰计只会多报。改动 `holidays` 会立刻重新计价（原始 `usage.jsonl` 不动）。
 
 **分时价目表** —— 自北京时间 2026-09-10 12:00 起，V4.1 Flash 空闲价为每百万词元 0.02 / 1 / 4 元（缓存命中 / 未命中 / 输出），高峰翻倍。旧 ID `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 路由到 V4.1-Flash，按 Flash 价计费。`deepseek-v4-pro` 始终按自身价目计费（空闲 0.15 / 4.5 / 13.5 元，高峰翻倍）：官方 2026-09-10 更新日志明确 9 月 14 日之后继续提供 V4 Pro 且计费方式不变，官方价目表也仍单列该模型。历史记录按自身时间戳取价，自定义覆盖对所有日期优先生效。价格与生效时刻均以[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)和[官方更新日志](https://api-docs.deepseek.com/zh-cn/updates)为准；更早记录沿用仓库初始价。
 

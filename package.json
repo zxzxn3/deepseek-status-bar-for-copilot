@@ -124,16 +124,6 @@
           ],
           "description": "%config.holidays%"
         },
-        "deepseekStatusBar.additionalWorkdays": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "2026-09-20"
-          ],
-          "description": "%config.additionalWorkdays%"
-        },
         "deepseekStatusBar.currency": {
           "type": "string",
           "enum": [

@@ -13,7 +13,6 @@ function parseArgs(argv: string[]): Record<string, string | undefined> {
     else if (a === "--balance") args.balance = argv[++i];
     else if (a === "--pricing") args.pricing = argv[++i];
     else if (a === "--holidays") args.holidays = argv[++i];
-    else if (a === "--workdays") args.workdays = argv[++i];
     else if (a === "--currency") args.currency = argv[++i];
     else if (a === "--rate") args.rate = argv[++i];
   }
@@ -36,14 +35,11 @@ async function main() {
     }
   }
   // 缺省（未传参）时沿用内置的 2026 法定节假日表，独立运行 out/server.js 也正确。
-  if (args.holidays || args.workdays) {
+  if (args.holidays) {
     try {
-      setPeakCalendar(
-        args.holidays ? JSON.parse(args.holidays) : undefined,
-        args.workdays ? JSON.parse(args.workdays) : undefined,
-      );
+      setPeakCalendar(JSON.parse(args.holidays));
     } catch {
-      console.error("invalid --holidays/--workdays JSON");
+      console.error("invalid --holidays JSON");
     }
   }
   if (args.currency === "usd" || args.currency === "cny") {

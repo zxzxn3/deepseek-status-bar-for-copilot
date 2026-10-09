@@ -19,7 +19,6 @@ import {
   RangeKey,
 } from "./stats";
 import {
-  DEFAULT_ADDITIONAL_WORKDAYS,
   DEFAULT_HOLIDAYS,
   isPeak,
   ModelPrice,
@@ -83,7 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
   applyPricingConfig(); // 应用用户定价覆盖
-  applyPeakCalendar(); // 应用法定节假日/调休上班日
+  applyPeakCalendar(); // 应用法定节假日
   void migrateLegacyConfig(); // 旧 deepseekUsage.* 设置迁移
   void refreshRate(); // 启动即拉一次汇率（失败回退配置值）
   rateTimer = setInterval(() => void refreshRate(), 6 * 3600 * 1000); // 每 6 小时刷新
@@ -108,10 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
         resetAggregation();
         poll();
       }
-      if (
-        e.affectsConfiguration("deepseekStatusBar.holidays") ||
-        e.affectsConfiguration("deepseekStatusBar.additionalWorkdays")
-      ) {
+      if (e.affectsConfiguration("deepseekStatusBar.holidays")) {
         applyPeakCalendar();
         resetAggregation();
         poll();
@@ -179,12 +175,9 @@ function applyPricingConfig() {
   setPriceOverrides(overrides);
 }
 
-/** 应用法定节假日/调休上班日到高峰判定。 */
+/** 应用法定节假日到高峰判定。 */
 function applyPeakCalendar() {
-  setPeakCalendar(
-    getCfg().get<string[]>("holidays", [...DEFAULT_HOLIDAYS]),
-    getCfg().get<string[]>("additionalWorkdays", [...DEFAULT_ADDITIONAL_WORKDAYS]),
-  );
+  setPeakCalendar(getCfg().get<string[]>("holidays", [...DEFAULT_HOLIDAYS]));
 }
 
 // 旧配置命名空间 deepseekUsage.* → deepseekStatusBar.* 迁移（一次，迁移后删除旧键）。
@@ -197,7 +190,6 @@ const LEGACY_CONFIG_KEYS = [
   "statusBarFormat",
   "pricing",
   "holidays",
-  "additionalWorkdays",
   "currency",
   "cnyPerUsd",
   "lowBalanceWarnCny",
@@ -537,7 +529,6 @@ async function launchProxy(context: vscode.ExtensionContext, generation: number)
       "--jsonl", jsonlPath, "--balance", balancePath,
       "--pricing", JSON.stringify(getCfg().get<object>("pricing", {})),
       "--holidays", JSON.stringify(getCfg().get<string[]>("holidays", [...DEFAULT_HOLIDAYS])),
-      "--workdays", JSON.stringify(getCfg().get<string[]>("additionalWorkdays", [...DEFAULT_ADDITIONAL_WORKDAYS])),
       "--currency", getCurrency(), "--rate", String(getCnyPerUsd())],
       { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
     proxyProc = child;
