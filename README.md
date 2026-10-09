@@ -189,11 +189,11 @@ npm run typecheck
 npm run smoke
 npm test
 
-# package into a .vsix
+# package into a .vsix (one file per build, named with the version)
 powershell -ExecutionPolicy Bypass -File .\package.ps1
 
-# install / reinstall (--force overwrites the same version)
-code --install-extension .\deepseek-status-bar-for-copilot.vsix --force
+# install / reinstall (--force overwrites the same version; the script prints the exact file name)
+code --install-extension .\deepseek-status-bar-for-copilot-0.3.1.vsix --force
 ```
 
 ## License

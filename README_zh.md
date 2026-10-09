@@ -192,11 +192,11 @@ npm run typecheck
 npm run smoke
 npm test
 
-# 打包为 .vsix
+# 打包为 .vsix（每次构建只产出一个文件，名字带版本号）
 powershell -ExecutionPolicy Bypass -File .\package.ps1
 
-# 安装 / 重装（--force 覆盖同版本）
-code --install-extension .\deepseek-status-bar-for-copilot.vsix --force
+# 安装 / 重装（--force 覆盖同版本；具体文件名以脚本输出为准）
+code --install-extension .\deepseek-status-bar-for-copilot-0.3.1.vsix --force
 ```
 
 ## 许可证

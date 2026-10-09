@@ -3,16 +3,19 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-# Remove stale artifacts
-Get-ChildItem -Path . -Filter "deepseek-usage-*.vsix" -File -ErrorAction SilentlyContinue |
+# One artifact per build, named with the version: no duplicate "current" copy.
+$version = (Get-Content -Raw .\package.json | ConvertFrom-Json).version
+$artifact = "deepseek-status-bar-for-copilot-$version.vsix"
+Get-ChildItem -Path . -Filter "deepseek-status-bar-for-copilot*.vsix" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne $artifact } |
     Remove-Item -Force
 
 # Package. vsce automatically runs vscode:prepublish (production build).
-npx.cmd -y @vscode/vsce package -o deepseek-status-bar-for-copilot.vsix
+npx.cmd -y @vscode/vsce package -o $artifact
 if ($LASTEXITCODE -ne 0) {
     throw "vsce package failed (exit code $LASTEXITCODE)"
 }
 
 Write-Host "Packaged:"
-Get-Item -LiteralPath .\deepseek-status-bar-for-copilot.vsix |
+Get-Item -LiteralPath ".\$artifact" |
     Select-Object -ExpandProperty Name
