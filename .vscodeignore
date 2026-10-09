@@ -7,6 +7,7 @@ tsconfig.json
 smoke.ts
 test.ts
 test/**
+tool/**
 HANDOVER-*.md
 package-lock.json
 **/*.map
