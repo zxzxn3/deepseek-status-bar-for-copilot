@@ -21,6 +21,11 @@
   <img src="status-bar.png" alt="状态栏实时显示今日 DeepSeek 费用与词元" width="557"/>
 </p>
 
+<p align="center">
+  <em>一闪一闪亮晶晶，我的 star 在哪里？</em><br/>
+  <sub>如果这里的数字帮你躲过一次账单惊吓，一颗 ⭐ 能让下一个人也找到它。</sub>
+</p>
+
 ## 为什么选它？
 
 - **真实数字，不是估算。** 读取 DeepSeek 每次请求返回的 `usage`（`prompt_tokens` / `completion_tokens` / 缓存词元），按官方价计价，总额与你账单一致——没有启发式估算。

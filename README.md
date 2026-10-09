@@ -17,6 +17,11 @@ This extension puts a lightweight local proxy between Copilot Chat (via the [Dee
   <img src="status-bar.png" alt="Status bar showing today's DeepSeek cost and tokens" width="557"/>
 </p>
 
+<p align="center">
+  <em>Twinkle, twinkle, little star,<br/>How I wonder where my stars are.</em><br/>
+  <sub>If these numbers ever saved you a surprise on your bill, a ⭐ helps the next person find it.</sub>
+</p>
+
 ## Why this extension?
 
 - **Real numbers, not estimates.** It reads the `usage` DeepSeek returns on every request (`prompt_tokens` / `completion_tokens` / cache tokens) and prices it with the official rates. The totals match your DeepSeek bill — no heuristic token counting.
