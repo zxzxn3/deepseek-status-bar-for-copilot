@@ -6,8 +6,9 @@ import * as path from "path";
 import * as http from "http";
 import { appendRecord, TailReader, UsageRecord } from "./src/jsonl";
 import { aggregateRange } from "./src/stats";
-import { isPeakBeijing, costFromUsage } from "./src/pricing";
+import { isPeak, costFromUsage } from "./src/pricing";
 import { SseUsageExtractor } from "./src/server/sse";
+import { probeProxy } from "./src/proxyHealth";
 import { startProxyServer } from "./src/server/proxyServer";
 
 const check = (name: string, got: unknown, exp: unknown) => {
@@ -31,16 +32,17 @@ const check = (name: string, got: unknown, exp: unknown) => {
 {
   const file = path.join(os.tmpdir(), "dsu-smoke2.jsonl");
   fs.rmSync(file, { force: true });
-  const BEIJING_OFFSET_MS = 8 * 3600 * 1000;
-  const bjTs = (now: Date, off: number, hour: number) => {
-    const bt = new Date(now.getTime() + BEIJING_OFFSET_MS + off * 86400000);
-    const utc = Date.UTC(bt.getUTCFullYear(), bt.getUTCMonth(), bt.getUTCDate(), hour) - BEIJING_OFFSET_MS;
-    return new Date(utc).toISOString();
+  // 时间窗按 UTC：02:00Z 落在高峰段（= 北京 10:00），13:00Z 为空闲
+  const utcTs = (now: Date, off: number, hour: number): string => {
+    const d = new Date(now.getTime() + off * 86400000);
+    return new Date(
+      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour),
+    ).toISOString();
   };
   const now = new Date();
-  const peakTs = bjTs(now, 0, 10);
-  const offTs = bjTs(now, 0, 20);
-  const yestTs = bjTs(now, -1, 10);
+  const peakTs = utcTs(now, 0, 2);
+  const offTs = utcTs(now, 0, 13);
+  const yestTs = utcTs(now, -1, 2);
   const rec = (ts: string): UsageRecord => ({
     ts, model: "deepseek-v4-flash", prompt_tokens: 1_000_000, completion_tokens: 0,
     total_tokens: 1_000_000, cache_hit_tokens: 0, cache_miss_tokens: 1_000_000,
@@ -51,10 +53,10 @@ const check = (name: string, got: unknown, exp: unknown) => {
   appendRecord(file, rec(yestTs));
   const reader = new TailReader(file);
   const s = aggregateRange(reader.readNew(), "today", now);
-  const expPeak = costFromUsage(1_000_000, 0, 0, 1_000_000, "deepseek-v4-flash", isPeakBeijing(peakTs));
-  const expOff = costFromUsage(1_000_000, 0, 0, 1_000_000, "deepseek-v4-flash", isPeakBeijing(offTs));
-  check("isPeak 周二10:00 北京", isPeakBeijing("2026-08-25T02:00:00.000Z"), true);
-  check("isPeak 周六10:00 北京", isPeakBeijing("2026-08-29T02:00:00.000Z"), false);
+  const expPeak = costFromUsage(1_000_000, 0, 0, 1_000_000, "deepseek-v4-flash", isPeak(peakTs));
+  const expOff = costFromUsage(1_000_000, 0, 0, 1_000_000, "deepseek-v4-flash", isPeak(offTs));
+  check("isPeak 周二 02:00Z", isPeak("2026-08-25T02:00:00.000Z"), true);
+  check("isPeak 周六 02:00Z", isPeak("2026-08-29T02:00:00.000Z"), false);
   check("聚合: 今天两条、昨天排除", s.p, 2_000_000);
   check("聚合: 费用（峰值现算）", s.cost.toFixed(4), (expPeak + expOff).toFixed(4));
   fs.rmSync(file, { force: true });
@@ -99,6 +101,8 @@ async function runStreaming() {
     log: () => {},
   });
   const proxyPort = (proxy.address() as any).port;
+  check("health: matching proxy", await probeProxy(proxyPort, jsonl), true);
+  check("health: different storage rejected", await probeProxy(proxyPort, jsonl + ".other"), false);
 
   // 3b. 正常流式客户端
   const body1 = JSON.stringify({

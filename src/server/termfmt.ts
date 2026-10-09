@@ -1,6 +1,6 @@
 // termfmt.ts — 代理输出格式化（对齐表格行），对齐 Python 版 termfmt.py 的观感。
 // 输出面板/管道是纯文本（无 ANSI 色），这里保留：列对齐 / k-M 缩写 / ￥费用 / 状态列。
-import { modelPrice, costFromUsage, isPeakBeijing } from "../pricing";
+import { modelPrice, costFromUsage, isPeak } from "../pricing";
 import { Currency, moneyPair } from "../currency";
 
 let currency: Currency = "cny";
@@ -74,13 +74,13 @@ export interface FmtRowInput {
   status: number;
   error?: string;
   ts?: string; // 覆盖时间（HH:MM:SS）；默认取当前本地时间
-  peak?: boolean; // 覆盖高峰判断；默认按当前北京时间
+  peak?: boolean; // 覆盖高峰判断；默认按当前 UTC 时段
 }
 
 /** 把一次请求的 usage + 费用格式化成一行：时间 | 输入/输出 | token总/缓存 | 费用总/缓存 | 状态。 */
 export function fmtRow(inp: FmtRowInput): string {
   const ts = inp.ts ?? new Date().toTimeString().slice(0, 8); // HH:MM:SS（本地，同 Python）
-  const peak = inp.peak ?? isPeakBeijing(new Date());
+  const peak = inp.peak ?? isPeak();
   const { pt, ct, tt, ch, cm, model, stream, status } = inp;
   const p_s = fmtNum(pt);
   const c_s = fmtNum(ct);

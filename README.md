@@ -11,7 +11,7 @@
   <strong>See exactly what DeepSeek is costing you — live, in the status bar, without leaving VS Code.</strong>
 </p>
 
-This extension puts a lightweight local proxy between Copilot Chat (via the [DeepSeek V4 for Copilot Chat](https://marketplace.visualstudio.com/items?itemName=Vizards.deepseek-v4-for-copilot) extension) and the DeepSeek API. It captures the **real `usage` object from every response** and turns it into today's cost and token totals — Beijing time, peak pricing included.
+This extension puts a lightweight local proxy between Copilot Chat (via the [DeepSeek V4 for Copilot Chat](https://marketplace.visualstudio.com/items?itemName=Vizards.deepseek-v4-for-copilot) extension) and the DeepSeek API. It captures the **real `usage` object from every response** and turns it into today's cost and token totals — UTC day boundaries, peak pricing included.
 
 <p align="center">
   <img src="status-bar.png" alt="Status bar showing today's DeepSeek cost and tokens" width="557"/>
@@ -32,7 +32,7 @@ Every other DeepSeek usage tool answers *"how much is left in my account?"* — 
 It sits **in the traffic path** — a local proxy that captures the real `usage` object DeepSeek returns on every request and prices it with the official rate card:
 
 - **Ground truth, not estimates.** `usage` is the exact field DeepSeek bills from (`prompt_tokens` / `completion_tokens` / `cache_hit` / `cache_miss`). No heuristic token counting.
-- **Three-way pricing.** Cache hit vs miss, input vs output, and Beijing peak vs off-peak (×2) — the same axes as your real bill.
+- **Three-way pricing.** Cache hit vs miss, input vs output, and UTC peak vs off-peak (×2) — the same axes as your real bill.
 - **Aborted generations still count.** Cancel mid-stream and the proxy keeps reading until it captures the final `usage` — so the numbers match what you're billed.
 - **Your API key never touches this extension.** The proxy forwards the `Authorization` header straight through and never stores it.
 
@@ -40,7 +40,7 @@ It sits **in the traffic path** — a local proxy that captures the real `usage`
 
 ### Live status bar
 
-The status bar shows today's totals (Beijing time) and updates automatically:
+The status bar shows today's totals (UTC) and updates automatically:
 
 <p align="center">
   <img src="display-formats.png" alt="Click the status bar to switch display formats" width="749"/>
@@ -49,7 +49,7 @@ The status bar shows today's totals (Beijing time) and updates automatically:
 - **Cost** — `￥9.8626/4.4522` total / cache-hit cost
 - **Tokens** — `91.69M/89.04M` total / cached tokens
 - **Balance** — `￥xx.xx` account balance, refreshed by the proxy on each request
-- **Peak pricing aware** — costs double during peak hours (Beijing weekdays 09:00–12:00 and 14:00–18:00)
+- **Peak pricing aware** — costs double during peak hours (UTC weekdays 01:00–04:00 and 06:00–10:00, i.e. Beijing 09:00–12:00 and 14:00–18:00)
 - **Six display formats** — click the status bar to pick: `full` (cost + tokens), `cost`, `tokens`, `totalT` (total tokens only), `totalCost` (total cost only), or `balance`
 - **Low-balance warning** — the status bar turns amber when the balance drops below `deepseekStatusBar.lowBalanceWarnCny`
 
@@ -59,8 +59,9 @@ The status bar shows today's totals (Beijing time) and updates automatically:
   <img src="details-view.png" alt="Detail panel with summary, usage chart, per-model breakdown and recent requests" width="760"/>
 </p>
 
+- **Custom time window** — drag two slider handles across your history, or enter exact start/end times (UTC, end exclusive). Release to apply; summaries and CSV follow the selection. Auto width targets at most 120 bars; fine manual widths widen if needed to stay within 2000 bars.
 - **Range selector** — `Day` / `Week` / `Month` / `All`, with a **date picker** to view any specific day, week, or month
-- **Usage-over-time chart** — Chart.js stacked bars (cache hit / cache miss / output) for cost or tokens, bucketed **by hour** for today & week and **by day** for month & all
+- **Usage-over-time chart** — Chart.js stacked bars (cache hit / cache miss / output) for cost or tokens, with an independent **Auto / 1, 5, 15 min / 1, 6 hour / 1, 7 day** bar width
 - **Balance & latency curves** — toggleable overlays for the account balance and the average request latency over time, each on its own axis with a legend
 - **Per-model breakdown** — cost & tokens per model (V4.1 Flash / V4 Pro), plus average latency per model
 - **Recent requests** — timestamp, model, prompt/completion, total/cache, cost, latency, status, error
@@ -74,6 +75,8 @@ A local OpenAI-compatible proxy that forwards `chat/completions` with real strea
 - **SSE-safe** — handles usage chunks split across network boundaries
 - **Disconnect-safe** — if the client cancels, the proxy keeps reading upstream to capture the final `usage` (aborted generations still cost money and are still counted)
 - **Auto-start** — starts with VS Code (`autoStart`) and takes over `deepseek-copilot.baseUrl`, restoring it when stopped
+
+Reused proxies are verified against this extension's health endpoint and storage location. All participating windows monitor availability. If the owner closes or the proxy fails, the previous global API URL is restored (manual edits are preserved); restart the proxy to resume tracking. Closing a window that only reuses a healthy proxy leaves the shared connection intact. Explicitly stopping a reused proxy restores the global URL for all windows without killing the other window's process.
 
 ### Account balance (on-request)
 
@@ -143,14 +146,18 @@ Data is stored as one JSON line per request in VS Code's global storage: raw fac
 | `deepseekStatusBar.pollIntervalSeconds` | `10` | Status bar refresh interval (seconds, min 2) |
 | `deepseekStatusBar.statusBarFormat` | `full` | Status bar format: `full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
 | `deepseekStatusBar.pricing` | `{}` | Per-model price overrides (yuan / 1M tokens): `{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
+| `deepseekStatusBar.holidays` | 2026 holidays | Chinese statutory holidays (Beijing calendar days, `YYYY-MM-DD`): these days are off-peak all day. Replaces the built-in list |
+| `deepseekStatusBar.additionalWorkdays` | 2026 make-up days | Make-up workdays (Beijing calendar days): weekends that are official working days, billed at peak hours. Set to `[]` to keep every weekend off-peak |
 | `deepseekStatusBar.currency` | `cny` | Cost currency: `cny` (￥) or `usd` ($) |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | Fallback CNY-per-USD rate, used when the live rate can't be fetched |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | Account balance (yuan) below which the status bar warns; `0` disables |
 | `deepseekStatusBar.recentRequestsCount` | `30` | Number of recent requests shown in the detail panel (1–200) |
 
-**Pricing model** — built-in defaults + your overrides; peak = off-peak × 2 during Beijing weekdays 09:00–12:00 and 14:00–18:00. USD display uses a live rate (fetched from a public API, refreshed every 6 hours) and falls back to `cnyPerUsd` offline.
+**Pricing model** — built-in defaults + your overrides; peak = off-peak × 2 during UTC weekdays 01:00–04:00 and 06:00–10:00 (the official rate card's UTC wording, identical to Beijing 09:00–12:00 and 14:00–18:00). Off-peak/peak pricing only starts at 2026-08-17 00:00 Beijing time, so earlier records are never retroactively doubled. USD display uses a live rate (fetched from a public API, refreshed every 6 hours) and falls back to `cnyPerUsd` offline.
 
-**Pricing schedule** — From September 10, 2026 at 12:00 Beijing time, V4.1 Flash costs CNY 0.02 / 1 / 4 per million tokens (cache hit / cache miss / output) off-peak; peak prices are double. The legacy IDs `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` use the same rates. V4 Pro remains at 0.15 / 4.5 / 13.5 off-peak until September 14, 2026 at 12:00 Beijing time, when `deepseek-v4-pro` switches to Flash pricing. Historical records use the price effective at their timestamp; custom overrides take priority across all dates. Prices and the Pro transition follow the [official pricing page](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/); the Flash effective time comes from the project handover. Earlier records retain the repository's initial rates.
+**Holidays** — the official rate card footnotes exclude Chinese statutory holidays from weekday peak hours, so the built-in calendar follows the 2026 State Council schedule (Guobanfamingdian [2025] No. 7): holiday blocks are off-peak for the whole Beijing calendar day, while make-up workdays (weekends you have to work) still count as working days and can be billed at peak. Both lists are plain `YYYY-MM-DD` arrays you can replace wholesale in your settings — set `additionalWorkdays` to `[]` if you prefer a plain weekend rule, and swap in next year's dates once the State Council publishes them. If a date appears in both lists it is treated as a holiday. Changing either list re-prices your history instantly; the raw `usage.jsonl` is never rewritten.
+
+**Pricing schedule** — From September 10, 2026 at 12:00 Beijing time, V4.1 Flash costs CNY 0.02 / 1 / 4 per million tokens (cache hit / cache miss / output) off-peak; peak prices are double. The legacy IDs `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are routed to V4.1-Flash and billed at the Flash price. `deepseek-v4-pro` keeps its own rates (0.15 / 4.5 / 13.5 off-peak, doubled at peak): the official changelog of 2026-09-10 states V4 Pro stays available past September 14 with unchanged billing, and the rate card still lists it separately. Historical records use the price effective at their timestamp; custom overrides take priority across all dates. Prices and effective times follow the [official pricing page](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) and [changelog](https://api-docs.deepseek.com/zh-cn/updates). Earlier records retain the repository's initial rates.
 
 ## Commands
 

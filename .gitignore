@@ -16,3 +16,6 @@ charts/
 
 # icon design source (track it if you want to keep it in the repo)
 *.psd
+
+# VS Code / Electron 崩溃日志
+debug.log

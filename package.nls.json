@@ -1,5 +1,5 @@
 {
-  "description": "Local proxy that intercepts real DeepSeek requests from Copilot Chat and shows today's cost, token usage, and balance in the status bar (Beijing time).",
+  "description": "Local proxy that intercepts real DeepSeek requests from Copilot Chat and shows today's cost, token usage, and balance in the status bar (UTC).",
   "command.showStats": "DeepSeek Status Bar: Today's Details",
   "command.toggleProxy": "DeepSeek Status Bar: Toggle Proxy",
   "command.proxyStart": "DeepSeek Status Bar: Start Proxy",
@@ -12,6 +12,8 @@
   "config.manageBaseUrl": "Point deepseek-copilot.baseUrl at the local proxy while running, and restore it when stopped.",
   "config.pollIntervalSeconds": "Status bar refresh interval (seconds).",
   "config.pricing": "Per-model price overrides (yuan per million tokens): an object keyed by model, each value {cache_hit, cache_miss, output}. Merged over the built-in defaults, taking priority for all historical and future dates.",
+  "config.holidays": "Chinese statutory holidays (Beijing calendar days, YYYY-MM-DD): peak hours do not apply on these days. Defaults to the 2026 State Council holiday schedule. The list replaces the built-in one, so remove entries you want to bill at peak.",
+  "config.additionalWorkdays": "Make-up workdays (Beijing calendar days, YYYY-MM-DD): weekends that are official working days in China, so peak hours apply. Defaults to the 2026 State Council make-up days. Set to [] if you prefer weekends to always stay off-peak.",
   "config.currency": "Cost display currency: cny (￥) or usd ($).",
   "config.cnyPerUsd": "Fallback CNY per 1 USD for USD display, used when the live rate can't be fetched from the API.",
   "config.lowBalanceWarnCny": "Account balance (yuan) below which the status bar shows a low-balance warning. Set to 0 to disable.",

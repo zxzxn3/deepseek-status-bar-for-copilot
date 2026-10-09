@@ -1,0 +1,4 @@
+# 统一以 LF 入库：Windows 检出（core.autocrlf=false）也不会把整仓库变成行尾差异。
+* text=auto eol=lf
+*.psd binary
+*.vsix binary

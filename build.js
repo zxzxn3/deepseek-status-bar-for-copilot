@@ -1,7 +1,7 @@
 // esbuild 打包：产出 out/extension.js（扩展宿主）与 out/server.js（代理子进程）。
 // 另把 Chart.js 的 UMD 产物复制到 out/chart.umd.js，供明细面板 webview 加载。
 const esbuild = require("esbuild");
-const { rmSync, copyFileSync } = require("fs");
+const { mkdirSync, copyFileSync } = require("fs");
 const path = require("path");
 
 const watch = process.argv.includes("--watch");
@@ -20,7 +20,7 @@ const common = {
 
 async function main() {
   const outdir = path.join(__dirname, "out");
-  rmSync(outdir, { recursive: true, force: true });
+  mkdirSync(outdir, { recursive: true });
 
   const ctx = await esbuild.context({
     ...common,
@@ -31,15 +31,10 @@ async function main() {
     outdir,
   });
 
-  if (watch) {
-    await ctx.watch();
-    console.log("[esbuild] watching…");
-    console.log("[esbuild] build done (initial)");
-  } else {
-    await ctx.rebuild();
-    await ctx.dispose();
-    console.log("[esbuild] build done → out/extension.js, out/server.js");
-  }
+  // watch() 启动监听后立即返回，不保证首次构建已完成。
+  // F5 的后台任务完成信号必须等入口和静态资源全部就绪。
+  if (watch) console.log("[esbuild] watching…");
+  await ctx.rebuild();
 
   // 复制 Chart.js UMD（webview 需要独立脚本文件，不能打包进 extension.js）
   copyFileSync(
@@ -56,6 +51,14 @@ async function main() {
     path.join(__dirname, "src", "webview", "detail.css"),
     path.join(outdir, "detail.css"),
   );
+
+  if (watch) {
+    await ctx.watch();
+    console.log("[esbuild] build done (initial)");
+  } else {
+    await ctx.dispose();
+    console.log("[esbuild] build done → out/extension.js, out/server.js");
+  }
 }
 
 main().catch((e) => {

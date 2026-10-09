@@ -23,8 +23,8 @@ import { UsageRecord } from "./jsonl";
 import {
   modelPrice,
   costFromUsage,
-  isPeakBeijing,
-  currentBeijingSegment,
+  isPeak,
+  currentSegment,
 } from "./pricing";
 import { fmtNum } from "./server/termfmt";
 import { t } from "./i18n";
@@ -41,35 +41,39 @@ export interface DetailData extends RangeStats {
   balance: { totalCny: number | null; isAvailable: boolean; ts: string } | null;
   balanceHistory: { ts: number; cny: number }[]; // 区间内余额快照（升序），供余额曲线叠加
   win: { start: number; end: number }; // 当前数据区间（UTC ms）
+  extent: { start: number; end: number };
   chartWin: { start: number; end: number }; // 图表完整时间轴（含未来空槽）
 }
 
-// 北京时间用 dayjs 的 UTC 模式偏移表示（字段即北京值，不受宿主时区影响）
-const bj = (ts: Date | string | number): dayjs.Dayjs =>
-  dayjs.utc(ts).add(8, "hour");
+// 时间一律按 UTC 读取与显示（与官方高峰时段同口径），不随宿主时区变化。
+const utcAt = (ts: Date | string | number = Date.now()): dayjs.Dayjs =>
+  dayjs.utc(ts);
 const RECENT_DEFAULT = 30;
 const RECENT_MAX = 200;
 
 export interface CustomSelection {
-  date: string; // YYYY-MM-DD（北京时间）
+  date: string; // YYYY-MM-DD（UTC）
   mode: CustomMode;
+  window?: { start: number; end: number };
+  bucketMs?: number;
+  grain?: number;
 }
 
-function todayBeijingStr(): string {
-  return bj(new Date()).format("YYYY-MM-DD");
+function todayUtcStr(): string {
+  return utcAt().format("YYYY-MM-DD");
 }
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** YYYY-MM-DD（北京）→ ISO 周 "YYYY-Www"（周选择器用）。 */
+/** YYYY-MM-DD（UTC）→ ISO 周 "YYYY-Www"（周选择器用）。 */
 function isoWeekOf(dateStr: string): string {
-  const d = dayjs.utc(dateStr); // 北京日历日按 UTC 计算 ISO 周（与时区无关）
+  const d = utcAt(dateStr);
   return `${d.isoWeekYear()}-W${pad2(d.isoWeek())}`;
 }
 
-/** ISO 周 "YYYY-Www" → 该周周一（北京）YYYY-MM-DD；解析失败返回 null。 */
+/** ISO 周 "YYYY-Www" → 该周周一（UTC）YYYY-MM-DD；解析失败返回 null。 */
 function isoWeekToDateStr(value: string): string | null {
   const m = /^(\d{4})-W(\d{2})$/.exec(value.trim());
   if (!m) return null;
@@ -81,7 +85,7 @@ function isoWeekToDateStr(value: string): string | null {
   return monday.format("YYYY-MM-DD");
 }
 
-/** YYYY-MM-DD（北京）→ "YYYY-MM"（月选择器值）。 */
+/** YYYY-MM-DD（UTC）→ "YYYY-MM"（月选择器值）。 */
 function dateStrToMonth(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
@@ -92,10 +96,10 @@ function monthToDateStr(value: string): string {
   return m ? `${m[1]}-${m[2]}-01` : "";
 }
 
-function beijingTime(ts: string): string {
-  const bt = bj(ts);
+function utcTime(ts: string): string {
+  const t = utcAt(ts);
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(bt.hour())}:${p(bt.minute())}:${p(bt.second())}`;
+  return `${p(t.hour())}:${p(t.minute())}:${p(t.second())}`;
 }
 
 function money(n: number, digits = 4): string {
@@ -120,7 +124,7 @@ function fmtMs(ms: number): string {
 
 function rowCosts(r: UsageRecord): { cost: number; chCost: number } {
   const tsMs = Date.parse(r.ts);
-  const peak = isPeakBeijing(new Date(tsMs));
+  const peak = isPeak(tsMs);
   const cost = costFromUsage(
     r.prompt_tokens ?? 0,
     r.completion_tokens ?? 0,
@@ -146,8 +150,8 @@ function render(
   assets: { chart: string; init: string; css: string },
 ): string {
   const s = data;
-  const today = bj(new Date()).format("YYYY-MM-DD");
-  const seg = currentBeijingSegment(new Date());
+  const today = utcAt().format("YYYY-MM-DD");
+  const seg = currentSegment();
   const peakBadge = seg.peak
     ? `<span class="badge peak">${t("peakBadge")}</span>`
     : `<span class="badge off">${t("offpeakBadge")}</span>`;
@@ -164,7 +168,7 @@ function render(
       .getConfiguration("deepseekStatusBar")
       .get<number>("lowBalanceWarnCny", 10);
     const low = lowThreshold > 0 && bal.totalCny < lowThreshold;
-    const when = bal.ts ? ` · ${beijingTime(bal.ts)}` : "";
+    const when = bal.ts ? ` · ${utcTime(bal.ts)}` : "";
     return `<div class="banner${low ? " warn" : ""}">${t(
       "balance",
     )}: ${money(bal.totalCny, 2)}${when}${low ? " · " + t("balanceLow") : ""}</div>`;
@@ -184,7 +188,7 @@ function render(
         : (custom.mode as RangeKey)
       : range;
   const rangeBtn = (k: RangeKey) =>
-    `<button class="seg${k === activeKey ? " active" : ""}" data-range="${k}">${t(
+    `<button class="seg${!custom.window && k === activeKey ? " active" : ""}" data-range="${k}">${t(
       "range" + k[0].toUpperCase() + k.slice(1),
     )}</button>`;
   const kindBtn = (k: ChartKind) =>
@@ -206,14 +210,9 @@ function render(
         ? isoWeekOf(custom.date)
         : dateStrToMonth(custom.date);
 
-  // 柱粒度与底部标签：周视图=小时柱+天标签；天视图=小时柱+小时标签；月/全部=天柱+天标签
-  const barHourly =
-    range === "today" ||
-    range === "week" ||
-    (range === "custom" && (custom.mode === "day" || custom.mode === "week"));
-  const labelHourly =
-    barHourly &&
-    (range === "today" || (range === "custom" && custom.mode === "day"));
+  // 时间窗口与柱宽独立；显式柱宽由聚合层按窗口起点对齐。
+  const barHourly = (custom.bucketMs ?? 3600000) < 86400000;
+  const labelHourly = barHourly;
   const payload = buildChartPayload(
     s.buckets,
     kind,
@@ -223,6 +222,7 @@ function render(
     s.balanceHistory,
     showBalance,
     showLatency,
+    custom.bucketMs,
   );
 
   const card = (k: string, v: string) =>
@@ -274,7 +274,7 @@ function render(
               : "";
             const mode = r.stream ? "s" : "o";
             return `<tr>
-        <td class="num">${beijingTime(r.ts)}</td>
+        <td class="num">${utcTime(r.ts)}</td>
         <td>${esc(r.model)}</td>
         <td class="num">${fmtNum(r.prompt_tokens)}/${fmtNum(r.completion_tokens)}</td>
         <td class="num">${fmtNum(r.total_tokens)}/${fmtNum(r.cache_hit_tokens)}</td>
@@ -330,6 +330,19 @@ function render(
   </div>
 
   <h2>${t("byTime")}</h2>
+  <div class="window-controls">
+    <div class="toolbar">
+      <label>${t("windowStart")} <input class="datepick" id="windowStart" type="datetime-local" required value="${utcAt(s.chartWin.start).format("YYYY-MM-DDTHH:mm")}"></label>
+      <label>${t("windowEnd")} <input class="datepick" id="windowEnd" type="datetime-local" required value="${utcAt(s.chartWin.end).format("YYYY-MM-DDTHH:mm")}"></label>
+      <label>${t("bucketWidth")} <select class="datepick" id="grain">${[0, 60000, 300000, 900000, 3600000, 21600000, 86400000, 604800000].map((v, i) => `<option value="${v}" ${(custom.grain ?? 0) === v ? "selected" : ""}>${t(["grainAuto", "grain1m", "grain5m", "grain15m", "grain1h", "grain6h", "grain1d", "grain1w"][i])}</option>`).join("")}</select></label>
+    </div>
+    <div class="dual-range" id="timeRange">
+      <div class="range-track"></div><div class="range-fill" id="rangeFill"></div>
+      <input aria-label="${t("windowStart")}" id="rangeStart" type="range" min="${Math.min(s.extent.start, s.chartWin.start)}" max="${Math.max(s.extent.end, s.chartWin.end)}" step="60000" value="${s.chartWin.start}">
+      <input aria-label="${t("windowEnd")}" id="rangeEnd" type="range" min="${Math.min(s.extent.start, s.chartWin.start)}" max="${Math.max(s.extent.end, s.chartWin.end)}" step="60000" value="${s.chartWin.end}">
+    </div>
+    <p class="muted">${t("windowNote")} · ${t("bucketWidth")}: ${custom.bucketMs! / 60000} ${t("minutes")}</p>
+  </div>
   <div class="legend">
     <span><i style="background:var(--vscode-charts-blue)"></i>${t("cacheHit")}</span>
     <span><i style="background:var(--vscode-charts-green)"></i>${t("cacheMiss")}</span>
@@ -361,12 +374,40 @@ function render(
   <p class="muted">${t("balanceDelayNote")}</p>
   <script>
     const vscode = acquireVsCodeApi();
-    setInterval(() => vscode.postMessage({ type: "refresh" }), 5000);
+    setInterval(() => {
+      if (!document.activeElement || !["INPUT", "SELECT"].includes(document.activeElement.tagName)) vscode.postMessage({ type: "refresh" });
+    }, 5000);
+    const lo = document.getElementById("rangeStart"), hi = document.getElementById("rangeEnd");
+    const from = document.getElementById("windowStart"), to = document.getElementById("windowEnd");
+    const stamp = n => new Date(n).toISOString().slice(0, 16);
+    const paintRange = () => {
+      const span = +lo.max - +lo.min;
+      const fill = document.getElementById("rangeFill");
+      fill.style.left = ((+lo.value - +lo.min) / span * 100) + "%";
+      fill.style.width = ((+hi.value - +lo.value) / span * 100) + "%";
+      lo.setAttribute("aria-valuetext", stamp(+lo.value)); hi.setAttribute("aria-valuetext", stamp(+hi.value));
+    };
+    const sendWindow = () => {
+      const start = Date.parse(from.value + ":00Z"), end = Date.parse(to.value + ":00Z");
+      to.setCustomValidity(start < end ? "" : ${JSON.stringify(t("invalidWindow"))});
+      if (!from.reportValidity() || !to.reportValidity() || !Number.isFinite(start) || !Number.isFinite(end)) return;
+      vscode.postMessage({ type: "window", start, end, grain: +document.getElementById("grain").value });
+    };
+    [lo, hi].forEach(el => {
+      el.addEventListener("input", () => {
+        if (+lo.value >= +hi.value) el.value = String(el === lo ? +hi.value - 60000 : +lo.value + 60000);
+        from.value = stamp(+lo.value); to.value = stamp(+hi.value); paintRange();
+      });
+      el.addEventListener("change", sendWindow);
+    });
+    [from, to].forEach(el => el.addEventListener("change", sendWindow));
+    document.getElementById("grain").addEventListener("change", () => vscode.postMessage({ type: "grain", grain: +document.getElementById("grain").value }));
+    paintRange();
     document.querySelectorAll(".seg[data-range]").forEach((b) =>
       b.addEventListener("click", () => vscode.postMessage({ type: "range", range: b.dataset.range })));
     document.querySelectorAll(".seg[data-kind]").forEach((b) =>
       b.addEventListener("click", () => vscode.postMessage({ type: "chart", kind: b.dataset.kind })));
-    document.getElementById("date").addEventListener("change", (e) =>
+    document.getElementById("date")?.addEventListener("change", (e) =>
       vscode.postMessage({ type: "date", date: e.target.value, inputType: e.target.type }));
     document.getElementById("showBalance").addEventListener("change", (e) =>
       vscode.postMessage({ type: "balance", show: e.target.checked }));
@@ -395,7 +436,7 @@ async function exportCsv(
 ) {
   const data = getData(range as PanelRange, custom);
   const csv = buildCsv(data.rows);
-  const stamp = bj(new Date()).format("YYYY-MM-DD");
+  const stamp = utcAt().format("YYYY-MM-DD");
   const uri = await vscode.window.showSaveDialog({
     defaultUri: vscode.Uri.file(
       path.join(os.homedir(), `deepseek-usage-${range}-${stamp}.csv`),
@@ -482,11 +523,16 @@ export function openDetailPanel(
     css: cssUri.toString(),
   };
   let range: PanelRange = "today";
-  let custom: CustomSelection = { date: todayBeijingStr(), mode: "day" };
+  let custom: CustomSelection = { date: todayUtcStr(), mode: "day" };
   let kind: ChartKind = "cost";
   let showBalance = false;
   let showLatency = false;
   const refresh = () => {
+    const initial = getData(range, { ...custom, bucketMs: undefined });
+    const span = initial.chartWin.end - initial.chartWin.start;
+    const widths = [60000, 300000, 900000, 3600000, 21600000, 86400000, 604800000];
+    const automatic = widths.find(w => span / w <= 120) ?? Math.ceil(span / 120 / 604800000) * 604800000;
+    custom.bucketMs = Math.max(custom.grain || automatic, Math.ceil(span / 2000 / 60000) * 60000);
     panel.webview.html = render(
       getData(range, custom),
       range,
@@ -501,6 +547,7 @@ export function openDetailPanel(
   panel.webview.onDidReceiveMessage((msg) => {
     if (msg.type === "range" && RANGE_KEYS.includes(msg.range as RangeKey)) {
       range = msg.range as RangeKey;
+      custom.window = undefined;
       // 点击粒度按钮时同步 custom.mode，使日期选择用当前按钮的粒度
       if (msg.range !== "all") {
         custom = {
@@ -508,6 +555,14 @@ export function openDetailPanel(
           mode: (msg.range === "today" ? "day" : msg.range) as CustomMode,
         };
       }
+      refresh();
+    } else if (msg.type === "window" || msg.type === "grain") {
+      if (![0, 60000, 300000, 900000, 3600000, 21600000, 86400000, 604800000].includes(msg.grain)) return;
+      if (msg.type === "window") {
+        if (!Number.isFinite(msg.start) || !Number.isFinite(msg.end) || msg.end - msg.start < 60000 || msg.start < 0 || msg.end > 253402185600000) return;
+        custom.window = { start: msg.start, end: msg.end };
+      }
+      custom.grain = msg.grain;
       refresh();
     } else if (msg.type === "chart") {
       kind = msg.kind === "tokens" ? "tokens" : "cost";
@@ -519,7 +574,7 @@ export function openDetailPanel(
         else if (msg.inputType === "month") converted = monthToDateStr(msg.date);
         else if (/^\d{4}-\d{2}-\d{2}$/.test(msg.date)) converted = msg.date;
         if (converted) {
-          custom = { ...custom, date: converted };
+          custom = { ...custom, date: converted, window: undefined };
           range = "custom";
           refresh();
         }
@@ -531,17 +586,7 @@ export function openDetailPanel(
       showLatency = msg.show === true;
       refresh();
     } else if (msg.type === "exportCsv") {
-      void exportCsv(
-        getData,
-        msg.range as string,
-        {
-          date: typeof msg.date === "string" && msg.date ? msg.date : custom.date,
-          mode:
-            msg.mode === "day" || msg.mode === "week" || msg.mode === "month"
-              ? (msg.mode as CustomMode)
-              : custom.mode,
-        },
-      );
+      void exportCsv(getData, range, custom);
     } else if (msg.type === "refresh") {
       refresh();
     }

@@ -10,5 +10,9 @@ test/**
 HANDOVER-*.md
 package-lock.json
 **/*.map
+**/*.log
+*.vsix
+out/test.js
+out/smoke.js
 .gitignore
 *.psd

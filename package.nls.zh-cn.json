@@ -1,5 +1,5 @@
 {
-  "description": "本地代理拦截 Copilot Chat 发出的 DeepSeek 真实请求，状态栏实时显示今日费用、token 用量与账户余额（北京时间）。",
+  "description": "本地代理拦截 Copilot Chat 发出的 DeepSeek 真实请求，状态栏实时显示今日费用、token 用量与账户余额（UTC）。",
   "command.showStats": "DeepSeek Status Bar: 今日明细",
   "command.toggleProxy": "DeepSeek Status Bar: 切换代理",
   "command.proxyStart": "DeepSeek Status Bar: 启动代理",
@@ -12,6 +12,8 @@
   "config.manageBaseUrl": "代理运行时自动把 deepseek-copilot.baseUrl 指向本地代理，停止时恢复原值。",
   "config.pollIntervalSeconds": "状态栏刷新间隔（秒）。",
   "config.pricing": "按模型的定价覆盖（元/百万 token）：以模型名为键的对象，值 {cache_hit, cache_miss, output}，合并到默认价上，对全部历史和未来时间段优先生效。",
+  "config.holidays": "中国法定节假日（北京日历日，YYYY-MM-DD）：这些日期的高峰时段不计高峰价。默认是 2026 年国务院办公厅放假安排；整表替换内置列表，想按高峰计费就从这里删掉对应日期。",
+  "config.additionalWorkdays": "调休上班日（北京日历日，YYYY-MM-DD）：官方要求上班的周末，仍按工作日计高峰。默认是 2026 年国办通知里的调休上班日；设为 [] 则周末永远空闲。",
   "config.currency": "费用显示货币：cny（￥）或 usd（$）。",
   "config.cnyPerUsd": "1 美元兑人民币汇率的兜底值（自动从公开 API 拉取失败时用）。",
   "config.lowBalanceWarnCny": "账户余额（元）低于该值时状态栏显示低余额警告；设为 0 关闭。",

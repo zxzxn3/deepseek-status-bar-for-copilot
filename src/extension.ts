@@ -1,15 +1,17 @@
 // DeepSeek Usage 扩展入口。
-// 职责：状态栏显示今日费用/token（北京时间）· 管理代理子进程 · 可选接管 Copilot baseUrl。
+// 职责：状态栏显示今日费用/token（UTC）· 管理代理子进程 · 可选接管 Copilot baseUrl。
 import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as net from "net";
+import { probeProxy } from "./proxyHealth";
 import * as path from "path";
 import * as fs from "fs";
 import { TailReader, UsageRecord } from "./jsonl";
 import {
-  beijingDayStartUtcMs,
+  utcDayStartMs,
   aggregateRange,
   aggregateCustom,
+  aggregateWindow,
   rangeWindow,
   customRangeWindow,
   allChartWindow,
@@ -17,8 +19,11 @@ import {
   RangeKey,
 } from "./stats";
 import {
-  isPeakBeijing,
+  DEFAULT_ADDITIONAL_WORKDAYS,
+  DEFAULT_HOLIDAYS,
+  isPeak,
   ModelPrice,
+  setPeakCalendar,
   setPriceOverrides,
 } from "./pricing";
 import { Currency, fmtMoney, moneyPair } from "./currency";
@@ -40,7 +45,12 @@ let records: UsageRecord[] = [];
 let lastDayStart = 0;
 let timer: NodeJS.Timeout | null = null;
 let proxyProc: cp.ChildProcess | null = null;
-let originalBaseUrl: string | undefined;
+let activePort: number | null = null;
+let proxyStarting: Promise<void> | null = null;
+let proxyGeneration = 0;
+let healthTimer: NodeJS.Timeout | null = null;
+let managedBaseUrl: string | null = null;
+let baseUrlQueue: Promise<void> = Promise.resolve();
 let proxyLog: vscode.OutputChannel | null = null;
 let rateTimer: NodeJS.Timeout | null = null;
 let extUri: vscode.Uri;
@@ -51,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
   balancePath = path.join(context.globalStorageUri.fsPath, "balance.jsonl");
   fs.mkdirSync(path.dirname(jsonlPath), { recursive: true });
   tailReader = new TailReader(jsonlPath);
-  lastDayStart = beijingDayStartUtcMs(new Date());
+  lastDayStart = utcDayStartMs(new Date());
 
   statusBar = vscode.window.createStatusBarItem(
     "deepseekStatusBar.cost",
@@ -73,6 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
   applyPricingConfig(); // 应用用户定价覆盖
+  applyPeakCalendar(); // 应用法定节假日/调休上班日
   void migrateLegacyConfig(); // 旧 deepseekUsage.* 设置迁移
   void refreshRate(); // 启动即拉一次汇率（失败回退配置值）
   rateTimer = setInterval(() => void refreshRate(), 6 * 3600 * 1000); // 每 6 小时刷新
@@ -98,6 +109,14 @@ export function activate(context: vscode.ExtensionContext) {
         poll();
       }
       if (
+        e.affectsConfiguration("deepseekStatusBar.holidays") ||
+        e.affectsConfiguration("deepseekStatusBar.additionalWorkdays")
+      ) {
+        applyPeakCalendar();
+        resetAggregation();
+        poll();
+      }
+      if (
         e.affectsConfiguration("deepseekStatusBar.currency") ||
         e.affectsConfiguration("deepseekStatusBar.cnyPerUsd")
       ) {
@@ -113,10 +132,19 @@ export function activate(context: vscode.ExtensionContext) {
   }
 }
 
-export function deactivate() {
+export async function deactivate() {
   if (timer) clearInterval(timer); // 停用即停止轮询
   if (rateTimer) clearInterval(rateTimer); // 停用即停止汇率刷新
-  stopProxy(); // 恢复 baseUrl
+  // 仅复用的窗口关闭时，不能中断仍由其它窗口持有的代理。
+  if (!proxyProc && activePort !== null && await probeProxy(activePort, jsonlPath)) {
+    ++proxyGeneration;
+    if (healthTimer) clearInterval(healthTimer);
+    healthTimer = null;
+    activePort = null;
+    managedBaseUrl = null;
+    return;
+  }
+  return stopProxy(); // 等待配置恢复完成
 }
 
 function getCfg(): vscode.WorkspaceConfiguration {
@@ -151,6 +179,14 @@ function applyPricingConfig() {
   setPriceOverrides(overrides);
 }
 
+/** 应用法定节假日/调休上班日到高峰判定。 */
+function applyPeakCalendar() {
+  setPeakCalendar(
+    getCfg().get<string[]>("holidays", [...DEFAULT_HOLIDAYS]),
+    getCfg().get<string[]>("additionalWorkdays", [...DEFAULT_ADDITIONAL_WORKDAYS]),
+  );
+}
+
 // 旧配置命名空间 deepseekUsage.* → deepseekStatusBar.* 迁移（一次，迁移后删除旧键）。
 const LEGACY_CONFIG_SECTION = "deepseekUsage";
 const LEGACY_CONFIG_KEYS = [
@@ -160,6 +196,8 @@ const LEGACY_CONFIG_KEYS = [
   "pollIntervalSeconds",
   "statusBarFormat",
   "pricing",
+  "holidays",
+  "additionalWorkdays",
   "currency",
   "cnyPerUsd",
   "lowBalanceWarnCny",
@@ -228,9 +266,9 @@ function startPolling() {
 function poll() {
   if (!tailReader) return;
   const now = new Date();
-  const dayStart = beijingDayStartUtcMs(now);
+  const dayStart = utcDayStartMs(now);
   if (dayStart !== lastDayStart) {
-    // 北京日切换：重建当天聚合（重扫文件）
+    // UTC 日切换：重建当天聚合（重扫文件）
     resetAggregation();
     lastDayStart = dayStart;
   }
@@ -246,7 +284,7 @@ function poll() {
 function renderStatusBar() {
   if (!statusBar) return;
   const s = stats ?? { p: 0, c: 0, t: 0, ch: 0, cost: 0, chCost: 0 };
-  const running = proxyProc !== null && !proxyProc.killed;
+  const running = activePort !== null;
   const fmt = getStatusFormat();
   const cur = getCurrency();
   const rate = getCnyPerUsd();
@@ -296,7 +334,7 @@ function renderStatusBar() {
       ? `${t("balance")} ${fmtMoney(balanceVal, cur, rate)}`
       : `${t("balance")} ${t("balanceNone")}`;
   statusBar.tooltip = new vscode.MarkdownString(
-    `${t("todayBeijing")}\n\n` +
+    `${t("todayUtc")}\n\n` +
       `${t("cost")} ${fmtMoney(s.cost, cur, rate)} / ${t("cacheHit")} ${fmtMoney(
         s.chCost,
         cur,
@@ -322,12 +360,12 @@ function showStats() {
   openDetailPanel(
     (range, custom) => {
       const all = readAllRecords();
-      const win =
+      const win = custom.window ?? (
         range === "custom"
           ? customRangeWindow(custom.date, custom.mode)
-          : rangeWindow(range, new Date());
+          : rangeWindow(range, new Date()));
       const chartWin =
-        range === "all" ? allChartWindow(all, new Date()) : win;
+        custom.window ?? (range === "all" ? allChartWindow(all, new Date()) : win);
       const balanceHistory = readAllBalance()
         .filter((b) => {
           if (b.totalCny === null) return false;
@@ -337,12 +375,16 @@ function showStats() {
         .map((b) => ({ ts: Date.parse(b.ts), cny: b.totalCny as number }))
         .sort((a, b) => a.ts - b.ts);
       const base = {
-        peakNow: isPeakBeijing(new Date()),
+        peakNow: isPeak(),
         balance: latestBalance,
         balanceHistory,
         win,
         chartWin,
+        extent: allChartWindow(all, new Date()),
       };
+      if (custom.bucketMs) {
+        return { ...aggregateWindow(all, chartWin.start, chartWin.end, custom.bucketMs), ...base };
+      }
       if (range === "custom") {
         return { ...aggregateCustom(all, custom.date, custom.mode), ...base };
       }
@@ -446,8 +488,8 @@ async function showStatusFormatMenu() {
 
 /** 切换代理：运行中则停止，否则启动。 */
 function toggleProxy(context: vscode.ExtensionContext) {
-  if (proxyProc && !proxyProc.killed) {
-    stopProxy();
+  if (activePort !== null || proxyStarting) {
+    void stopProxy();
   } else {
     void startProxy(context);
   }
@@ -458,62 +500,85 @@ function updateProxyContext() {
   void vscode.commands.executeCommand(
     "setContext",
     "deepseekStatusBar.proxyRunning",
-    proxyProc !== null && !proxyProc.killed,
+    activePort !== null,
   );
 }
 
-async function startProxy(context: vscode.ExtensionContext) {
-  if (proxyProc && !proxyProc.killed) {
-    void vscode.window.showInformationMessage(t("proxyAlreadyRunning"));
-    return;
-  }
+function startProxy(context: vscode.ExtensionContext): Promise<void> {
+  if (proxyStarting) return proxyStarting;
+  if (activePort !== null) return Promise.resolve();
+  const generation = ++proxyGeneration;
+  proxyStarting = launchProxy(context, generation).catch(async (error) => {
+    getProxyLog().appendLine(String(error));
+    if (generation === proxyGeneration) {
+      await stopProxy();
+      void vscode.window.showWarningMessage(t("proxyFailed"));
+    }
+  }).finally(() => { proxyStarting = null; });
+  return proxyStarting;
+}
+
+async function launchProxy(context: vscode.ExtensionContext, generation: number) {
   const port = getCfg().get<number>("port", 8080);
   const log = getProxyLog();
-
-  // 端口探测：已被占用 → 复用现有服务（记日志，避免"看不见是谁在听"）
-  if (await isPortInUse(port)) {
-    log.appendLine(`[deepseek-usage] ${t("portInUseLog", { port })}`);
-    void vscode.window.showWarningMessage(t("portInUseWarn", { port }));
-  } else {
+  if (getCfg().get<boolean>("manageBaseUrl", true) &&
+      vscode.workspace.getConfiguration("deepseek-copilot").inspect<string>("baseUrl")?.globalValue === `http://127.0.0.1:${port}`) {
+    managedBaseUrl = `http://127.0.0.1:${port}`;
+    // 升级前留下的代理地址没有备份时，恢复为默认配置，而不是保存死地址。
+    if (!fs.existsSync(baseUrlBackupPath())) {
+      writeBaseUrlBackup({ proxyUrl: managedBaseUrl });
+    }
+  }
+  const occupied = await isPortInUse(port);
+  if (generation !== proxyGeneration) return;
+  if (!occupied) {
     const serverJs = path.join(context.extensionUri.fsPath, "out", "server.js");
-    log.appendLine(
-      `[deepseek-usage] ${t("proxyStartLog", { serverJs, port, jsonl: jsonlPath })}`,
-    );
-    const pricingJson = JSON.stringify(getCfg().get<object>("pricing", {}));
-    proxyProc = cp.spawn(
-      process.execPath,
-      [
-        serverJs,
-        "--port",
-        String(port),
-        "--jsonl",
-        jsonlPath,
-        "--balance",
-        balancePath,
-        "--pricing",
-        pricingJson,
-        "--currency",
-        getCurrency(),
-        "--rate",
-        String(getCnyPerUsd()),
-      ],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    proxyProc.stdout?.on("data", (d) => log.append(d.toString()));
-    proxyProc.stderr?.on("data", (d) => log.append(d.toString()));
-    proxyProc.on("exit", (code) => {
-      log.appendLine(`[deepseek-usage] ${t("proxyExitLog", { code: String(code) })}`);
+    const child = cp.spawn(process.execPath, [serverJs, "--port", String(port),
+      "--jsonl", jsonlPath, "--balance", balancePath,
+      "--pricing", JSON.stringify(getCfg().get<object>("pricing", {})),
+      "--holidays", JSON.stringify(getCfg().get<string[]>("holidays", [...DEFAULT_HOLIDAYS])),
+      "--workdays", JSON.stringify(getCfg().get<string[]>("additionalWorkdays", [...DEFAULT_ADDITIONAL_WORKDAYS])),
+      "--currency", getCurrency(), "--rate", String(getCnyPerUsd())],
+      { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    proxyProc = child;
+    child.stdout?.on("data", d => log.append(d.toString()));
+    child.stderr?.on("data", d => log.append(d.toString()));
+    const lost = () => {
+      if (proxyProc !== child) return;
       proxyProc = null;
-      updateProxyContext();
-      renderStatusBar();
+      // 启动时可能输掉端口竞争，由健康探测确认获胜的代理。
+      if (activePort !== null) void stopProxy();
+    };
+    child.once("error", error => { log.appendLine(String(error)); lost(); });
+    child.once("exit", code => {
+      log.appendLine(t("proxyExitLog", { code: String(code) }));
+      lost();
     });
   }
-
-  if (getCfg().get<boolean>("manageBaseUrl", true)) {
-    takeOverBaseUrl(port);
+  let ready = false;
+  for (let attempt = 0; attempt < 20 && generation === proxyGeneration; attempt++) {
+    if (await probeProxy(port, jsonlPath)) { ready = true; break; }
+    await new Promise(resolve => setTimeout(resolve, 150));
   }
+  if (generation !== proxyGeneration) return;
+  if (!ready) throw new Error(`Proxy unavailable or unrecognized on port ${port}`);
+  activePort = port;
+  log.appendLine(`Proxy ready on ${port} (${proxyProc ? "owned" : "shared"})`);
+  if (getCfg().get<boolean>("manageBaseUrl", true)) await takeOverBaseUrl(port);
+  if (generation !== proxyGeneration) return;
   updateProxyContext();
   renderStatusBar();
+  let checking = false;
+  healthTimer = setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      if (!await probeProxy(port, jsonlPath) && generation === proxyGeneration) {
+        await stopProxy();
+        void vscode.window.showWarningMessage(t("proxyFailed"));
+      }
+    } finally { checking = false; }
+  }, 2000);
 }
 
 function getProxyLog(): vscode.OutputChannel {
@@ -523,41 +588,67 @@ function getProxyLog(): vscode.OutputChannel {
   return proxyLog;
 }
 
-function stopProxy() {
-  if (proxyProc && !proxyProc.killed) {
-    proxyProc.kill();
-  }
+async function stopProxy() {
+  ++proxyGeneration;
+  if (healthTimer) clearInterval(healthTimer);
+  healthTimer = null;
+  const child = proxyProc;
   proxyProc = null;
-  restoreBaseUrl();
-  if (proxyLog) {
-    proxyLog.appendLine(`[deepseek-usage] ${t("proxyStoppedLog")}`);
-  }
+  activePort = null;
   updateProxyContext();
   renderStatusBar();
+  // 先恢复直连，再关闭本窗口拥有的进程。
+  const url = managedBaseUrl;
+  managedBaseUrl = null;
+  await restoreBaseUrl(url);
+  if (child && !child.killed) child.kill();
 }
 
-function takeOverBaseUrl(port: number) {
-  const cfg = vscode.workspace.getConfiguration("deepseek-copilot");
-  // 只在首次接管时保存原值；重复调用不覆盖，保证 stopProxy 能正确恢复
-  if (originalBaseUrl === undefined) {
-    originalBaseUrl = cfg.get<string>("baseUrl");
+function baseUrlBackupPath() {
+  return path.join(path.dirname(jsonlPath), "base-url-backup.json");
+}
+
+function writeBaseUrlBackup(value: { proxyUrl: string; original?: string }) {
+  const file = baseUrlBackupPath();
+  const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value), "utf8");
+    fs.renameSync(temporary, file); // 其它窗口只会读到完整的备份。
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
   }
-  void cfg.update(
-    "baseUrl",
-    `http://127.0.0.1:${port}`,
-    vscode.ConfigurationTarget.Global,
-  );
 }
 
-function restoreBaseUrl() {
-  if (originalBaseUrl === undefined) return;
-  const cfg = vscode.workspace.getConfiguration("deepseek-copilot");
-  void cfg.update(
-    "baseUrl",
-    originalBaseUrl,
-    vscode.ConfigurationTarget.Global,
-  );
-  originalBaseUrl = undefined;
+function takeOverBaseUrl(port: number): Promise<void> {
+  managedBaseUrl = `http://127.0.0.1:${port}`;
+  baseUrlQueue = baseUrlQueue.catch(() => {}).then(async () => {
+    const cfg = vscode.workspace.getConfiguration("deepseek-copilot");
+    const proxyUrl = `http://127.0.0.1:${port}`;
+    const current = cfg.inspect<string>("baseUrl")?.globalValue;
+    if (current !== proxyUrl) {
+      let original = current;
+      if (fs.existsSync(baseUrlBackupPath())) {
+        const previous = JSON.parse(fs.readFileSync(baseUrlBackupPath(), "utf8"));
+        if (current === previous.proxyUrl) original = previous.original;
+      }
+      writeBaseUrlBackup({ proxyUrl, original });
+    }
+    await cfg.update("baseUrl", proxyUrl, vscode.ConfigurationTarget.Global);
+  });
+  return baseUrlQueue;
+}
+
+function restoreBaseUrl(url: string | null): Promise<void> {
+  baseUrlQueue = baseUrlQueue.catch(() => {}).then(async () => {
+    if (!url || !fs.existsSync(baseUrlBackupPath())) return;
+    const saved = JSON.parse(fs.readFileSync(baseUrlBackupPath(), "utf8"));
+    const cfg = vscode.workspace.getConfiguration("deepseek-copilot");
+    // 保留用户手动修改；undefined 表示删除全局覆盖。
+    if (cfg.inspect<string>("baseUrl")?.globalValue === saved.proxyUrl && saved.proxyUrl === url) {
+      await cfg.update("baseUrl", saved.original, vscode.ConfigurationTarget.Global);
+    }
+  }).catch(error => { getProxyLog().appendLine(`Restore baseUrl: ${error}`); });
+  return baseUrlQueue;
 }
 
 function isPortInUse(port: number): Promise<boolean> {

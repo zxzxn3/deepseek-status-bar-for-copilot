@@ -7,9 +7,8 @@ dayjs.extend(utc);
 import { TimeBucket } from "./stats";
 import { t } from "./i18n";
 
-// 北京时间用 dayjs 的 UTC 模式偏移表示（字段即北京值，不受宿主时区影响）
-const bj = (ts: Date | string | number): dayjs.Dayjs =>
-  dayjs.utc(ts).add(8, "hour");
+// 时间标签一律按 UTC 显示（与统计区间同口径），不随宿主时区变化。
+const utcAt = (ts: Date | string | number): dayjs.Dayjs => dayjs.utc(ts);
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -44,22 +43,24 @@ export function buildChartPayload(
   balance: { ts: number; cny: number }[],
   showBalance: boolean,
   showLatency: boolean,
+  intervalMs?: number,
 ): ChartPayload | null {
   if (buckets.length === 0) return null;
-  const bucketMs = barHourly ? 3600 * 1000 : 24 * 3600 * 1000;
+  const bucketMs = intervalMs ?? (barHourly ? 3600 * 1000 : 24 * 3600 * 1000);
   const slotCount = Math.max(1, Math.ceil((chartWin.end - chartWin.start) / bucketMs));
   const bucketByStart = new Map(buckets.map((b) => [b.start, b]));
   const compactDay = !labelHourly; // 非小时标签的视图（周/月/全部）：标签只显示日号
   const slotLabel = (s: number) => {
-    const bt = bj(s);
-    if (compactDay) return String(bt.date());
+    const t = utcAt(s);
+    if (intervalMs) return t.format(bucketMs < 86400000 ? "MM-DD HH:mm" : "YYYY-MM-DD");
+    if (compactDay) return String(t.date());
     return labelHourly
-      ? pad2(bt.hour())
-      : `${pad2(bt.month() + 1)}-${pad2(bt.date())}`;
+      ? pad2(t.hour())
+      : `${pad2(t.month() + 1)}-${pad2(t.date())}`;
   };
   const isDayStart = (s: number) => {
-    const bt = bj(s);
-    return bt.hour() === 0 && bt.minute() === 0;
+    const t = utcAt(s);
+    return t.hour() === 0 && t.minute() === 0;
   };
   const labelStep = Math.max(1, Math.ceil(slotCount / 24));
   const labels: string[] = [];
@@ -73,7 +74,8 @@ export function buildChartPayload(
     const s = chartWin.start + i * bucketMs;
     const b = bucketByStart.get(s);
     const show =
-      labelHourly ? i % labelStep === 0
+      intervalMs ? i % Math.max(1, Math.ceil(slotCount / 8)) === 0
+      : labelHourly ? i % labelStep === 0
       : barHourly ? isDayStart(s)
       : i % labelStep === 0;
     labels.push(slotLabel(s));
@@ -94,21 +96,21 @@ export function buildChartPayload(
   let balanceVals: (number | null)[] | { x: number; y: number }[] | null = null;
   let useTimeAxis = false;
   if (showBalance && balance.length > 0) {
-    if (barHourly) {
+    if (barHourly || intervalMs) {
       // 天/周视图：柱是小时，余额按小时槽平均，画在 category 轴
-      const arr: (number | null)[] = [];
-      for (let i = 0; i < slotCount; i++) {
-        const s = slotStarts[i];
-        let sum = 0;
-        let n = 0;
-        for (const p of balance) {
-          if (p.ts >= s && p.ts < s + bucketMs) {
-            sum += p.cny;
-            n++;
-          }
-        }
-        arr.push(n > 0 ? sum / n : null);
+      const sums = new Map<number, { sum: number; count: number }>();
+      for (const point of balance) {
+        if (point.ts < chartWin.start || point.ts >= chartWin.end) continue;
+        const index = Math.floor((point.ts - chartWin.start) / bucketMs);
+        const value = sums.get(index) ?? { sum: 0, count: 0 };
+        value.sum += point.cny;
+        value.count++;
+        sums.set(index, value);
       }
+      const arr = slotStarts.map((_, index) => {
+        const value = sums.get(index);
+        return value ? value.sum / value.count : null;
+      });
       balanceVals = arr;
     } else {
       // 月/全部视图：柱是天，余额按小时点画在独立时间轴 xBal（已与天柱对齐）

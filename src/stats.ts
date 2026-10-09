@@ -1,8 +1,8 @@
-// 今日（北京时间）统计聚合。JSONL 存原始事实，费用在此按峰值现算。
+// 今日（UTC）统计聚合。JSONL 存原始事实，费用在此按峰值现算。
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { UsageRecord } from "./jsonl";
-import { modelPrice, costFromUsage, isPeakBeijing } from "./pricing";
+import { modelPrice, costFromUsage, isPeak } from "./pricing";
 
 dayjs.extend(utc);
 
@@ -15,13 +15,12 @@ export interface TodayStats {
   chCost: number;
 }
 
-// 北京时间用 dayjs 的 UTC 模式偏移表示（字段即北京值，不受宿主时区影响）
-const bj = (ts: Date | string | number): dayjs.Dayjs =>
-  dayjs.utc(ts).add(8, "hour");
+// 全部时间窗按 UTC 对齐：与 DeepSeek 官方高峰时段同口径，且不随宿主/用户时区漂移。
+const utcAt = (ts: Date | string | number): dayjs.Dayjs => dayjs.utc(ts);
 
-/** 北京时间"今天"0 点对应的 UTC 毫秒。 */
-export function beijingDayStartUtcMs(now: Date): number {
-  return bj(now).startOf("day").subtract(8, "hour").valueOf();
+/** UTC 当天 0 点对应的毫秒。 */
+export function utcDayStartMs(now: Date): number {
+  return utcAt(now).startOf("day").valueOf();
 }
 
 export function newTodayStats(): TodayStats {
@@ -48,7 +47,7 @@ function costsAt(
   const tt = r.total_tokens ?? 0;
   const ch = r.cache_hit_tokens ?? 0;
   const cm = r.cache_miss_tokens ?? 0;
-  const peak = isPeakBeijing(new Date(tsMs));
+  const peak = isPeak(tsMs);
   const f = peak ? 2 : 1;
   const cost = costFromUsage(pt, ct, ch, cm, r.model, peak, tsMs);
   const pr = modelPrice(r.model, tsMs);
@@ -90,26 +89,26 @@ export type PanelRange = RangeKey | "custom";
 export const RANGE_KEYS: RangeKey[] = ["today", "week", "month", "all"];
 export type CustomMode = "day" | "week" | "month";
 
-/** 区间窗口（北京时间）：day=今日一整天；week/month=自然周/月整段（含未来空槽，图轴稳定）；all=全部。 */
+/** 区间窗口（UTC）：day=今日一整天；week/month=自然周/月整段（含未来空槽，图轴稳定）；all=全部。 */
 export function rangeWindow(
   key: RangeKey,
   now = new Date(),
 ): { start: number; end: number } {
   const DAY = 24 * 3600 * 1000;
-  const dayStart = beijingDayStartUtcMs(now);
+  const dayStart = utcDayStartMs(now);
   switch (key) {
     case "today":
       return { start: dayStart, end: dayStart + DAY };
     case "week": {
-      const wd = bj(dayStart).day(); // 北京星期几，周日=0
+      const wd = utcAt(dayStart).day(); // UTC 星期几，周日=0
       const weekStart = dayStart - ((wd + 6) % 7) * DAY;
       return { start: weekStart, end: weekStart + 7 * DAY };
     }
     case "month": {
-      const bt = bj(dayStart);
+      const m = utcAt(dayStart);
       return {
-        start: bt.startOf("month").subtract(8, "hour").valueOf(),
-        end: bt.add(1, "month").startOf("month").subtract(8, "hour").valueOf(),
+        start: m.startOf("month").valueOf(),
+        end: m.add(1, "month").startOf("month").valueOf(),
       };
     }
     case "all":
@@ -117,7 +116,7 @@ export function rangeWindow(
   }
 }
 
-/** "全部"图表的时间跨度：从最早记录的北京日开始，到今晚结束（避免 1970 年起画海量空槽）。 */
+/** "全部"图表的时间跨度：从最早记录的 UTC 日开始，到今晚结束（避免 1970 年起画海量空槽）。 */
 export function allChartWindow(
   records: UsageRecord[],
   now = new Date(),
@@ -129,38 +128,38 @@ export function allChartWindow(
     if (Number.isFinite(t) && t < minTs) minTs = t;
   }
   return {
-    start: beijingDayStartUtcMs(new Date(minTs)),
-    end: beijingDayStartUtcMs(now) + DAY,
+    start: utcDayStartMs(new Date(minTs)),
+    end: utcDayStartMs(now) + DAY,
   };
 }
 
-/** 北京时间某日历日 0 点对应的 UTC 毫秒。dateStr = YYYY-MM-DD。 */
-export function beijingDateStartUtcMs(dateStr: string): number {
-  return bj(dateStr).startOf("day").subtract(8, "hour").valueOf();
+/** UTC 某日历日 0 点对应的毫秒。dateStr = YYYY-MM-DD。 */
+export function utcDateStartMs(dateStr: string): number {
+  return utcAt(dateStr).startOf("day").valueOf();
 }
 
-/** 自定义区间窗口：day=该北京日；week=该日所在周（周一~周日）；month=该日所在月。 */
+/** 自定义区间窗口：day=该 UTC 日；week=该日所在周（周一~周日）；month=该日所在月。 */
 export function customRangeWindow(
   dateStr: string,
   mode: CustomMode,
 ): { start: number; end: number } {
   const DAY = 24 * 3600 * 1000;
-  const dayStart = beijingDateStartUtcMs(dateStr);
+  const dayStart = utcDateStartMs(dateStr);
   if (mode === "day") return { start: dayStart, end: dayStart + DAY };
   if (mode === "week") {
-    const wd = bj(dayStart).day(); // 北京星期几，周日=0
+    const wd = utcAt(dayStart).day(); // UTC 星期几，周日=0
     const weekStart = dayStart - ((wd + 6) % 7) * DAY;
     return { start: weekStart, end: weekStart + 7 * DAY };
   }
-  const bt = bj(dayStart);
+  const m = utcAt(dayStart);
   return {
-    start: bt.startOf("month").subtract(8, "hour").valueOf(),
-    end: bt.add(1, "month").startOf("month").subtract(8, "hour").valueOf(),
+    start: m.startOf("month").valueOf(),
+    end: m.add(1, "month").startOf("month").valueOf(),
   };
 }
 
 export interface TimeBucket {
-  label: string; // 今天=HH，其它=MM-DD（北京时间）
+  label: string; // 今天=HH，其它=MM-DD（UTC）
   start: number; // 桶起点（UTC ms）
   cost: number;
   tokens: number;
@@ -194,15 +193,15 @@ export interface RangeStats {
 }
 
 /** 聚合任意区间：汇总 + 按模型 + 最近请求 + 时间桶。 */
-function aggregateWindow(
+export function aggregateWindow(
   records: UsageRecord[],
   start: number,
   end: number,
-  hourly: boolean,
+  hourly: boolean | number,
 ): RangeStats {
   const HOUR = 3600 * 1000;
   const DAY = 24 * HOUR;
-  const bucketMs = hourly ? HOUR : DAY;
+  const bucketMs = typeof hourly === "number" ? hourly : hourly ? HOUR : DAY;
 
   const stats = newTodayStats();
   const modelMap = new Map<string, ModelStats>();
@@ -214,10 +213,10 @@ function aggregateWindow(
   let maxMs = 0;
 
   const bucketLabel = (ms: number) => {
-    const bt = bj(ms);
-    if (hourly) return String(bt.hour()).padStart(2, "0");
-    return `${String(bt.month() + 1).padStart(2, "0")}-${String(
-      bt.date(),
+    const t = utcAt(ms);
+    if (hourly) return String(t.hour()).padStart(2, "0");
+    return `${String(t.month() + 1).padStart(2, "0")}-${String(
+      t.date(),
     ).padStart(2, "0")}`;
   };
 
@@ -260,12 +259,10 @@ function aggregateWindow(
 
     rows.push(r);
 
-    // 桶按北京时间对齐（当天 00:00 / 整点），与图表完整时间轴对齐；
-    // 否则北京 00:00-08:00 的记录会被分到前一天的 UTC 桶。
-    const bStart = bj(tsMs)
-      .startOf(hourly ? "hour" : "day")
-      .subtract(8, "hour")
-      .valueOf();
+    // 桶按 UTC 对齐（当天 00:00 / 整点），与图表完整时间轴一致。
+    const bStart = typeof hourly === "number"
+      ? start + Math.floor((tsMs - start) / bucketMs) * bucketMs
+      : utcAt(tsMs).startOf(hourly ? "hour" : "day").valueOf();
     let b = bucketMap.get(bStart);
     if (!b) {
       b = {
@@ -299,7 +296,7 @@ function aggregateWindow(
 
   rows.sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   const buckets = [...bucketMap.values()].sort((a, b) =>
-    a.label < b.label ? -1 : a.label > b.label ? 1 : 0,
+    a.start - b.start,
   );
   for (const b of buckets) {
     b.avgMs = b.countMs ? Math.round((b.sumMs ?? 0) / b.countMs) : 0;

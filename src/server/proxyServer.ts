@@ -32,6 +32,11 @@ export function startProxyServer(
   const balanceUrl =
     opts.balanceUrl ?? process.env.DEEPSEEK_BALANCE_URL ?? BALANCE_URL;
   const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/__deepseek_status_health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ service: "deepseek-status-bar", jsonlPath }));
+      return;
+    }
     void handle(req, res, apiUrl, jsonlPath, balancePath, log, balanceUrl);
   });
   return new Promise((resolve, reject) => {

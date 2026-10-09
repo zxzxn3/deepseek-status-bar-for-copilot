@@ -43,7 +43,7 @@ export class TailReader {
     // 默认从头读（首次 readNew 返回全部现有记录，便于初始化聚合）
   }
 
-  /** 回退到文件头（如北京日切换后重建当天聚合）。 */
+  /** 回退到文件头（如 UTC 日切换后重建当天聚合）。 */
   reset(): void {
     this.offset = 0;
   }

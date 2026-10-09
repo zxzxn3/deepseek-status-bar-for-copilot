@@ -2,7 +2,7 @@
 // 由扩展 spawn；也可独立运行便于调试。
 import { startProxyServer } from "./proxyServer";
 import { makeHdr, makeSep, setCurrency } from "./termfmt";
-import { setPriceOverrides } from "../pricing";
+import { setPeakCalendar, setPriceOverrides } from "../pricing";
 
 function parseArgs(argv: string[]): Record<string, string | undefined> {
   const args: Record<string, string | undefined> = {};
@@ -12,6 +12,8 @@ function parseArgs(argv: string[]): Record<string, string | undefined> {
     else if (a === "--jsonl") args.jsonl = argv[++i];
     else if (a === "--balance") args.balance = argv[++i];
     else if (a === "--pricing") args.pricing = argv[++i];
+    else if (a === "--holidays") args.holidays = argv[++i];
+    else if (a === "--workdays") args.workdays = argv[++i];
     else if (a === "--currency") args.currency = argv[++i];
     else if (a === "--rate") args.rate = argv[++i];
   }
@@ -31,6 +33,17 @@ async function main() {
       setPriceOverrides(JSON.parse(args.pricing));
     } catch {
       console.error("invalid --pricing JSON");
+    }
+  }
+  // 缺省（未传参）时沿用内置的 2026 法定节假日表，独立运行 out/server.js 也正确。
+  if (args.holidays || args.workdays) {
+    try {
+      setPeakCalendar(
+        args.holidays ? JSON.parse(args.holidays) : undefined,
+        args.workdays ? JSON.parse(args.workdays) : undefined,
+      );
+    } catch {
+      console.error("invalid --holidays/--workdays JSON");
     }
   }
   if (args.currency === "usd" || args.currency === "cny") {

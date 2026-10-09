@@ -15,7 +15,7 @@
   <strong>DeepSeek 在 Copilot 里到底花了你多少钱？状态栏实时显示，无需离开 VS Code。</strong>
 </p>
 
-本扩展在 Copilot Chat（经 [DeepSeek V4 for Copilot Chat](https://marketplace.visualstudio.com/items?itemName=Vizards.deepseek-v4-for-copilot) 扩展）与 DeepSeek API 之间架了一个轻量本地代理，捕获**每个响应里真实的 `usage` 对象**，换算成今日费用与词元总量——北京时间，含高峰计费。
+本扩展在 Copilot Chat（经 [DeepSeek V4 for Copilot Chat](https://marketplace.visualstudio.com/items?itemName=Vizards.deepseek-v4-for-copilot) 扩展）与 DeepSeek API 之间架了一个轻量本地代理，捕获**每个响应里真实的 `usage` 对象**，换算成今日费用与词元总量——按 UTC 分日，含高峰计费。
 
 <p align="center">
   <img src="status-bar.png" alt="状态栏实时显示今日 DeepSeek 费用与词元" width="557"/>
@@ -36,7 +36,7 @@
 它处在**流量路径上**——一个本地代理，捕获 DeepSeek 每个响应返回的真实 `usage` 对象，用官方价目表计价：
 
 - **真源，不是估算。** `usage` 正是 DeepSeek 计费的原始字段（`prompt_tokens` / `completion_tokens` / `cache_hit` / `cache_miss`），没有启发式词元估算。
-- **三轴计价。** 缓存命中/未命中、输入/输出、北京高峰/低谷（×2）——与你的真实账单同轴。
+- **三轴计价。** 缓存命中/未命中、输入/输出、UTC 高峰/空闲（×2）——与你的真实账单同轴。
 - **被中断的生成也照常计费。** 中途取消时，代理继续读完上游直到捕获最终 `usage`——数字与你被扣的钱一致。
 - **你的 API key 从不经过本扩展。** 代理只转发 `Authorization` 头，从不存储。
 
@@ -44,7 +44,7 @@
 
 ### 实时状态栏
 
-状态栏显示今日（北京时间）合计并自动刷新：
+状态栏显示今日（UTC）合计并自动刷新：
 
 <p align="center">
   <img src="display-formats.png" alt="点击状态栏切换显示格式" width="749"/>
@@ -53,7 +53,7 @@
 - **费用** —— `￥9.8626/4.4522` 总费用/缓存命中费用
 - **词元** —— `91.69M/89.04M` 总词元/缓存词元
 - **余额** —— `￥xx.xx` 账户余额，随每次请求由代理刷新
-- **高峰计费感知** —— 高峰时段（北京时间工作日 09:00–12:00、14:00–18:00）费用 ×2
+- **高峰计费感知** —— 高峰时段（UTC 工作日 01:00–04:00、06:00–10:00，即北京时间 09:00–12:00、14:00–18:00）费用 ×2
 - **六种显示格式** —— 点击状态栏切换：`full`（费用+词元）、`cost`、`tokens`、`totalT`（仅总词元）、`totalCost`（仅总费用）或 `balance`（余额）
 - **低余额告警** —— 余额低于 `deepseekStatusBar.lowBalanceWarnCny` 时状态栏变琥珀色
 
@@ -66,7 +66,7 @@
 </p>
 
 - **区间选择** —— `日` / `周`（自然周）/ `月`（自然月）/ `全部`，配合**日期选择器**查看任意指定天 / 周 / 月
-- **用量走势图** —— Chart.js 堆叠柱（缓存命中 / 缓存未命中 / 输出），费用或词元；今天与周按**小时**分桶，月与全部按**天**分桶
+- **用量走势图** —— Chart.js 堆叠柱（缓存命中 / 缓存未命中 / 输出），费用或词元；柱宽独立选择自动、1／5／15 分钟、1／6 小时或 1／7 天
 - **余额 / 耗时曲线** —— 可开关叠加显示账户余额与平均请求耗时，各自独立坐标轴并带图例
 - **按模型拆分** —— 各模型（V4.1 Flash / V4 Pro）的费用与词元，外加每模型平均耗时
 - **最近请求** —— 时间、模型、输入/输出、总/缓存、费用、耗时、状态、错误
@@ -149,14 +149,18 @@ Copilot Chat (DeepSeek V4 for Copilot)
 | `deepseekStatusBar.pollIntervalSeconds` | `10` | 状态栏刷新间隔（秒，最小 2） |
 | `deepseekStatusBar.statusBarFormat` | `full` | 状态栏格式：`full` / `cost` / `tokens` / `totalT` / `totalCost` / `balance` |
 | `deepseekStatusBar.pricing` | `{}` | 按模型定价覆盖（元/百万词元）：`{"deepseek-flash": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}}` |
+| `deepseekStatusBar.holidays` | 2026 年法定节假日 | 中国法定节假日（北京日历日 `YYYY-MM-DD`），这些日期整天不计高峰价。整表替换内置列表 |
+| `deepseekStatusBar.additionalWorkdays` | 2026 年调休上班日 | 调休上班日（北京日历日），官方要求上班的周末仍按工作日计高峰。设为 `[]` 则周末永远空闲 |
 | `deepseekStatusBar.currency` | `cny` | 费用货币：`cny`（￥）或 `usd`（$） |
 | `deepseekStatusBar.cnyPerUsd` | `6.74` | CNY 兑 USD 的兜底汇率（实时汇率拉取失败时用） |
 | `deepseekStatusBar.lowBalanceWarnCny` | `10` | 余额（元）低于该值时状态栏告警；`0` 关闭 |
 | `deepseekStatusBar.recentRequestsCount` | `30` | 明细面板"最近请求"显示的条数（1–200） |
 
-**计价模型** —— 内置默认价 + 你的覆盖；北京工作日 09:00–12:00、14:00–18:00 高峰 = 低谷 ×2。USD 显示使用实时汇率（公开 API，每 6 小时刷新），离线回退到 `cnyPerUsd`。
+**计价模型** —— 内置默认价 + 你的覆盖；UTC 工作日 01:00–04:00、06:00–10:00 高峰 = 空闲 ×2（官方价目表的 UTC 口径，等同北京时间 09:00–12:00、14:00–18:00）。峰谷定价自北京时间 2026-08-17 00:00 起生效，此前为单一价，历史记录不会被回溯翻倍。USD 显示使用实时汇率（公开 API，每 6 小时刷新），离线回退到 `cnyPerUsd`。
 
-**分时价目表** —— 自北京时间 2026-09-10 12:00 起，V4.1 Flash 空闲价为每百万词元 0.02 / 1 / 4 元（缓存命中 / 未命中 / 输出），高峰翻倍。旧 ID `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 同价。V4 Pro 空闲价保持 0.15 / 4.5 / 13.5 元，至北京时间 2026-09-14 12:00 起，`deepseek-v4-pro` 改按 Flash 价计费。历史记录按自身时间戳取价，自定义覆盖对所有日期优先生效。价格与 Pro 切换时间依据[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，Flash 生效时间依据项目交接信息；更早记录沿用仓库初始价。
+**法定节假日** —— 官方价目表脚注规定工作日高峰时段**不含中国法定节假日**，因此内置 2026 年国务院办公厅放假安排（国办发明电〔2025〕7 号）：放假日期按北京日历日整天计入空闲，调休上班日（周末上班）仍按工作日计高峰。两个列表都可在设置里整表替换——想按标准周末计费就把 `additionalWorkdays` 设为 `[]`，次年的放假安排公布后把两个列表换成新日期即可。同一日期同时出现在两个列表时按放假处理。对已记录的历史数据，改这两个列表会立刻重新计价（原始 `usage.jsonl` 不动）。
+
+**分时价目表** —— 自北京时间 2026-09-10 12:00 起，V4.1 Flash 空闲价为每百万词元 0.02 / 1 / 4 元（缓存命中 / 未命中 / 输出），高峰翻倍。旧 ID `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 路由到 V4.1-Flash，按 Flash 价计费。`deepseek-v4-pro` 始终按自身价目计费（空闲 0.15 / 4.5 / 13.5 元，高峰翻倍）：官方 2026-09-10 更新日志明确 9 月 14 日之后继续提供 V4 Pro 且计费方式不变，官方价目表也仍单列该模型。历史记录按自身时间戳取价，自定义覆盖对所有日期优先生效。价格与生效时刻均以[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)和[官方更新日志](https://api-docs.deepseek.com/zh-cn/updates)为准；更早记录沿用仓库初始价。
 
 ## 命令
 
@@ -191,3 +195,11 @@ code --install-extension .\deepseek-status-bar-for-copilot.vsix --force
 ## 许可证
 
 [MIT](LICENSE)
+
+### 自由时间窗口与代理故障恢复
+
+明细图表支持双端滑条，拖动圆点并松开即可选择时间窗口，也可输入精确的起止时间（UTC，包含起点、不含终点）。汇总、模型明细与 CSV 跟随所选窗口。日／周／月／全部按钮仍可快速重置区间。
+
+柱宽与时间窗口独立，可选自动、1／5／15 分钟、1／6 小时、1／7 天。自动模式尽量不超过 120 根柱；手动选择细粒度时最多显示 2000 根柱，超过则自动加宽，并显示实际柱宽。
+
+代理启动就绪后才接管地址；只复用身份和数据目录匹配的代理。各窗口监测代理健康状态，代理退出或失联后恢复原全局 API 地址，并保留用户手动改过的地址。重新启动代理可继续统计。仅复用代理的窗口关闭不会中断其他窗口；主动停止复用则恢复所有窗口共享的全局地址，但不结束其他窗口的进程。
